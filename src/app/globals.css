@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #16241f;
+  --ink-soft: #22352d;
+  --paper: #f1eee4;
+  --paper-dim: #e6e2d4;
+  --pcb: #2e6b4e;
+  --pcb-soft: #e4ede8;
+  --copper: #c17a3d;
+  --copper-soft: #f3e2cf;
+  --amber: #c98a1f;
+  --amber-soft: #f6e6c4;
+  --rust: #b1502c;
+  --rust-soft: #f4ddd1;
+  --reflect: #5b5583;
+  --reflect-soft: #e9e6f1;
+  --line: #c9c3af;
+  --text: #1c2620;
+  --text-dim: #5c6960;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-paper: var(--paper);
+  --color-paper-dim: var(--paper-dim);
+  --color-pcb: var(--pcb);
+  --color-pcb-soft: var(--pcb-soft);
+  --color-copper: var(--copper);
+  --color-copper-soft: var(--copper-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-rust: var(--rust);
+  --color-rust-soft: var(--rust-soft);
+  --color-reflect: var(--reflect);
+  --color-reflect-soft: var(--reflect-soft);
+  --color-line: var(--line);
+  --color-text-primary: var(--text);
+  --color-text-dim: var(--text-dim);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--paper-dim);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 1.1s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s step-start infinite;
+}

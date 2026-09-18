@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  GURU
+  SISWA
+}
+
+enum LearningModel {
+  PROBLEM_SOLVING
+  PBL
+  TRANSFORMATIF
+}
+
+enum SoalStatus {
+  DRAFT
+  APPROVED
+  REVISION_NEEDED
+  ARCHIVED
+}
+
+enum SubmissionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+enum MilestoneStatus {
+  LOCKED
+  IN_PROGRESS
+  PENDING_REVIEW
+  APPROVED
+  REVISION_NEEDED
+}
+
+enum StudentActivityStatus {
+  IDLE
+  TYPING
+  RUNNING
+  STUCK
+  SUBMITTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  ownedClasses  Kelas[]           @relation("ClassOwner")
+  memberships   KelasMember[]
+  submissions   Submission[]
+  sentHints     Hint[]            @relation("HintSender")
+  receivedHints Hint[]            @relation("HintReceiver")
+  activities    StudentActivity[]
+  createdSoal   Soal[]            @relation("SoalCreator")
+
+  @@map("users")
+}
+
+model Kelas {
+  id        String   @id @default(cuid())
+  name      String
+  joinCode  String   @unique @map("join_code")
+  guruId    String   @map("guru_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  guru        User             @relation("ClassOwner", fields: [guruId], references: [id])
+  members     KelasMember[]
+  assignments SoalAssignment[]
+
+  @@map("kelas")
+}
+
+model KelasMember {
+  id       String   @id @default(cuid())
+  kelasId  String   @map("kelas_id")
+  userId   String   @map("user_id")
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  kelas Kelas @relation(fields: [kelasId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([kelasId, userId])
+  @@map("kelas_members")
+}
+
+model Soal {
+  id            String        @id @default(cuid())
+  title         String
+  description   String        @db.Text
+  learningModel LearningModel @map("learning_model")
+  topic         String
+  difficulty    Int           @default(1)
+  status        SoalStatus    @default(DRAFT)
+  createdById   String        @map("created_by_id")
+  starterCode   String?       @db.Text @map("starter_code")
+  language      String?
+  aiPromptUsed  String?       @db.Text @map("ai_prompt_used")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  createdBy      User              @relation("SoalCreator", fields: [createdById], references: [id])
+  testCases      TestCase[]
+  milestones     Milestone[]
+  rubricCriteria RubricCriterion[]
+  conceptTags    ConceptTag[]
+  assignments    SoalAssignment[]
+  submissions    Submission[]
+
+  @@index([learningModel, status])
+  @@map("soal")
+}
+
+model SoalAssignment {
+  id        String    @id @default(cuid())
+  soalId    String    @map("soal_id")
+  kelasId   String    @map("kelas_id")
+  dueAt     DateTime? @map("due_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  soal  Soal  @relation(fields: [soalId], references: [id], onDelete: Cascade)
+  kelas Kelas @relation(fields: [kelasId], references: [id], onDelete: Cascade)
+
+  @@unique([soalId, kelasId])
+  @@map("soal_assignments")
+}
+
+model TestCase {
+  id       String  @id @default(cuid())
+  soalId   String  @map("soal_id")
+  input    String  @db.Text
+  expected String  @db.Text
+  isHidden Boolean @default(false) @map("is_hidden")
+  order    Int     @default(0)
+  label    String?
+  conceptTagId String? @map("concept_tag_id")
+
+  soal       Soal        @relation(fields: [soalId], references: [id], onDelete: Cascade)
+  conceptTag ConceptTag? @relation(fields: [conceptTagId], references: [id])
+
+  @@map("test_cases")
+}
+
+model Milestone {
+  id          String @id @default(cuid())
+  soalId      String @map("soal_id")
+  title       String
+  description String @db.Text
+  order       Int
+
+  soal     Soal                @relation(fields: [soalId], references: [id], onDelete: Cascade)
+  progress MilestoneProgress[]
+
+  @@map("milestones")
+}
+
+model MilestoneProgress {
+  id           String          @id @default(cuid())
+  milestoneId  String          @map("milestone_id")
+  submissionId String          @map("submission_id")
+  status       MilestoneStatus @default(LOCKED)
+  content      String?         @db.Text
+  teacherNote  String?         @db.Text @map("teacher_note")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  milestone  Milestone  @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([milestoneId, submissionId])
+  @@map("milestone_progress")
+}
+
+model RubricCriterion {
+  id          String @id @default(cuid())
+  soalId      String @map("soal_id")
+  name        String
+  description String @db.Text
+  maxScore    Int    @map("max_score")
+  order       Int    @default(0)
+
+  soal   Soal          @relation(fields: [soalId], references: [id], onDelete: Cascade)
+  grades RubricGrade[]
+
+  @@map("rubric_criteria")
+}
+
+model RubricGrade {
+  id           String  @id @default(cuid())
+  criterionId  String  @map("criterion_id")
+  submissionId String  @map("submission_id")
+  score        Int
+  feedback     String? @db.Text
+
+  criterion  RubricCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+  submission Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([criterionId, submissionId])
+  @@map("rubric_grades")
+}
+
+model Submission {
+  id             String           @id @default(cuid())
+  soalId         String           @map("soal_id")
+  studentId      String           @map("student_id")
+  status         SubmissionStatus @default(IN_PROGRESS)
+  code           String?          @db.Text
+  testsPassed    Int?             @map("tests_passed")
+  testsTotal     Int?             @map("tests_total")
+  lintErrors     Json?            @map("lint_errors")
+  writingContent String?          @db.Text @map("writing_content")
+  autoGradeScore Float?           @map("auto_grade_score")
+  totalScore     Float?           @map("total_score")
+  teacherComment String?          @db.Text @map("teacher_comment")
+  submittedAt    DateTime?        @map("submitted_at")
+  gradedAt       DateTime?        @map("graded_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  soal              Soal                @relation(fields: [soalId], references: [id])
+  student           User                @relation(fields: [studentId], references: [id])
+  milestoneProgress MilestoneProgress[]
+  rubricGrades      RubricGrade[]
+  errorLogs         ErrorLog[]
+
+  @@unique([soalId, studentId])
+  @@index([studentId, status])
+  @@map("submissions")
+}
+
+model ConceptTag {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  soal      Soal[]
+  errors    ErrorLog[]
+  testCases TestCase[]
+
+  @@map("concept_tags")
+}
+
+model ErrorLog {
+  id           String   @id @default(cuid())
+  submissionId String   @map("submission_id")
+  conceptTagId String   @map("concept_tag_id")
+  message      String   @db.Text
+  line         Int?
+  occurredAt   DateTime @default(now()) @map("occurred_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  conceptTag ConceptTag @relation(fields: [conceptTagId], references: [id])
+
+  @@index([conceptTagId, occurredAt])
+  @@map("error_logs")
+}
+
+model StudentActivity {
+  id          String                @id @default(cuid())
+  userId      String                @map("user_id")
+  soalId      String?               @map("soal_id")
+  kelasId     String?               @map("kelas_id")
+  status      StudentActivityStatus @default(IDLE)
+  lastEventAt DateTime              @default(now()) @map("last_event_at")
+  stuckSince  DateTime?             @map("stuck_since")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kelasId])
+  @@map("student_activities")
+}
+
+model Hint {
+  id         String    @id @default(cuid())
+  senderId   String    @map("sender_id")
+  receiverId String    @map("receiver_id")
+  soalId     String    @map("soal_id")
+  message    String    @db.Text
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  sender   User @relation("HintSender", fields: [senderId], references: [id])
+  receiver User @relation("HintReceiver", fields: [receiverId], references: [id])
+
+  @@index([receiverId, soalId])
+  @@map("hints")
+}
+
+model SyncLog {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id")
+  action      String
+  payload     Json
+  clientTs    DateTime  @map("client_ts")
+  syncedAt    DateTime? @map("synced_at")
+  conflictRes String?   @map("conflict_res")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, syncedAt])
+  @@map("sync_logs")
+}
