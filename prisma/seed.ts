@@ -166,11 +166,36 @@ async function main() {
     ],
   });
 
+  const soalDL = await prisma.soal.create({
+    data: {
+      title: "Analisis Mendalam: Flexbox vs Grid",
+      description:
+        "Analisis mendalam tentang CSS Flexbox: mulai dari memahami konsep dasar flex container, menganalisis perbedaan justify-content dan align-items, mengevaluasi kapan memakai Flexbox vs Grid, lalu mencipta layout responsif yang menggabungkan keduanya.",
+      learningModel: "DEEP_LEARNING",
+      topic: "CSS Layout & Flexbox",
+      difficulty: 3,
+      status: "APPROVED",
+      createdById: guru.id,
+      starterCode: `/* Lapisan 1: Memahami */\n.container { display: flex; }\n\n/* Lapisan 2: Menganalisis */\n/* Jelaskan perbedaan justify-content vs align-items */\n\n/* Lapisan 3: Mengevaluasi */\n/* Kapan lebih tepat memakai Grid? */\n\n/* Lapisan 4: Mencipta */\n/* Buat layout responsif gabungan */`,
+      language: "css",
+    },
+  });
+
+  await prisma.milestone.createMany({
+    data: [
+      { soalId: soalDL.id, title: "Memahami", description: "Jelaskan konsep dasar flex container dan properti utamanya", order: 1 },
+      { soalId: soalDL.id, title: "Menganalisis", description: "Analisis perbedaan justify-content vs align-items, serta kapan masing-masing dipakai", order: 2 },
+      { soalId: soalDL.id, title: "Mengevaluasi", description: "Evaluasi kapan lebih tepat memakai Flexbox vs Grid berdasarkan kasus nyata", order: 3 },
+      { soalId: soalDL.id, title: "Mencipta", description: "Buat layout responsif yang menggabungkan Flexbox dan Grid secara tepat", order: 4 },
+    ],
+  });
+
   await prisma.soalAssignment.createMany({
     data: [
       { soalId: soalPS.id, kelasId: kelas.id },
       { soalId: soalTF.id, kelasId: kelas.id },
       { soalId: soalPBL.id, kelasId: kelas.id },
+      { soalId: soalDL.id, kelasId: kelas.id },
     ],
   });
 

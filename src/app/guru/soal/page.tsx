@@ -49,12 +49,24 @@ const demoSoal: DraftSoal[] = [
       "Dinilai bertahap per milestone, siswa lanjut ke tahap berikutnya setelah tahap sebelumnya disetujui.",
     status: "revisi",
   },
+  {
+    id: "4",
+    learningModel: "DEEP_LEARNING",
+    topic: "CSS Layout & Flexbox",
+    difficulty: "Sulit",
+    body: "Analisis mendalam tentang CSS Flexbox: mulai dari memahami konsep dasar flex container, menganalisis perbedaan justify-content dan align-items, mengevaluasi kapan memakai Flexbox vs Grid, lalu mencipta layout responsif yang menggabungkan keduanya.",
+    codeBlock: `/* Lapisan 1: Memahami */\n.container { display: flex; }\n\n/* Lapisan 2: Menganalisis */\n/* Jelaskan perbedaan justify-content vs align-items */\n\n/* Lapisan 3: Mengevaluasi */\n/* Kapan lebih tepat memakai Grid? */\n\n/* Lapisan 4: Mencipta */\n/* Buat layout responsif gabungan */`,
+    rubrik:
+      "Dinilai per lapisan analisis (Memahami → Menganalisis → Mengevaluasi → Mencipta). Tiap lapisan punya bobot skor tersendiri, lapisan lebih tinggi bernilai lebih besar.",
+    status: "pending",
+  },
 ];
 
-const modelBadge: Record<string, { variant: "pcb" | "copper" | "reflect"; label: string }> = {
+const modelBadge: Record<string, { variant: "pcb" | "copper" | "reflect" | "ocean"; label: string }> = {
   PROBLEM_SOLVING: { variant: "pcb", label: "Problem Solving" },
   PBL: { variant: "copper", label: "Project Based Learning" },
   TRANSFORMATIF: { variant: "reflect", label: "Transformatif" },
+  DEEP_LEARNING: { variant: "ocean", label: "Deep Learning" },
 };
 
 export default function VerifikasiSoalPage() {

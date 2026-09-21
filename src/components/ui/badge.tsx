@@ -1,11 +1,12 @@
 import { cn } from "@/lib/utils";
 
-type BadgeVariant = "pcb" | "copper" | "reflect" | "amber" | "rust" | "default";
+type BadgeVariant = "pcb" | "copper" | "reflect" | "ocean" | "amber" | "rust" | "default";
 
 const variantStyles: Record<BadgeVariant, string> = {
   pcb: "text-pcb border-pcb bg-pcb-soft",
   copper: "text-copper border-copper bg-copper-soft",
   reflect: "text-reflect border-reflect bg-reflect-soft",
+  ocean: "text-ocean border-ocean bg-ocean-soft",
   amber: "text-amber border-amber bg-amber-soft",
   rust: "text-rust border-rust bg-rust-soft",
   default: "text-text-dim border-line bg-white",

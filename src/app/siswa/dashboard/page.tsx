@@ -16,10 +16,11 @@ interface SoalItem {
   expanded?: boolean;
 }
 
-const modelBadge: Record<string, { variant: "pcb" | "copper" | "reflect"; label: string }> = {
+const modelBadge: Record<string, { variant: "pcb" | "copper" | "reflect" | "ocean"; label: string }> = {
   PROBLEM_SOLVING: { variant: "pcb", label: "Problem Solving" },
   PBL: { variant: "copper", label: "Project Based Learning" },
   TRANSFORMATIF: { variant: "reflect", label: "Transformatif" },
+  DEEP_LEARNING: { variant: "ocean", label: "Deep Learning" },
 };
 
 const demoSoal: SoalItem[] = [
@@ -28,6 +29,7 @@ const demoSoal: SoalItem[] = [
   { id: "3", title: "Grid Galeri Foto", difficulty: "Sulit", description: "Menyusun galeri responsif memakai CSS Grid, dikerjakan bertahap per milestone.", learningModel: "PBL", status: "available" },
   { id: "4", title: "Validasi Form", difficulty: "Menengah", description: "Menambahkan validasi input kosong sebelum submit.", learningModel: "PBL", status: "locked" },
   { id: "5", title: "Refleksi: Aplikasi Favoritmu", difficulty: "Mudah", description: "Menulis refleksi pengalaman memakai sebuah aplikasi/website.", learningModel: "TRANSFORMATIF", status: "available" },
+  { id: "6", title: "Analisis Mendalam: Flexbox vs Grid", difficulty: "Sulit", description: "Analisis berlapis dari memahami, menganalisis, mengevaluasi, hingga mencipta layout CSS.", learningModel: "DEEP_LEARNING", status: "available" },
 ];
 
 export default function LatihanPage() {
@@ -233,6 +235,67 @@ export default function LatihanPage() {
                       </button>
                       <button className="bg-copper text-white border-none px-3 py-1.5 text-[12px] font-sans cursor-pointer">
                         Kirim untuk dinilai guru
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Inline editor for Deep Learning */}
+              {activeEditor === soal.id && soal.learningModel === "DEEP_LEARNING" && (
+                <div className="mt-4 border border-line bg-white">
+                  <div className="flex justify-between items-center px-4 py-3.5 border-b border-line">
+                    <strong className="text-[13.5px]">{soal.title}</strong>
+                    <button
+                      onClick={closeEditor}
+                      className="bg-transparent border border-line text-text-primary px-3 py-1.5 text-[12px] font-sans cursor-pointer"
+                    >
+                      ← Daftar soal
+                    </button>
+                  </div>
+                  <div className="flex px-5 pt-4 pb-2 gap-0">
+                    {[
+                      { num: 1, label: "Memahami", done: true },
+                      { num: 2, label: "Menganalisis", current: true },
+                      { num: 3, label: "Mengevaluasi" },
+                      { num: 4, label: "Mencipta" },
+                    ].map((layer, i) => (
+                      <div key={i} className="flex items-center gap-0">
+                        <div className="text-center">
+                          <div className={cn(
+                            "w-7 h-7 rounded-full border-[1.5px] flex items-center justify-center mx-auto mb-1.5 font-mono text-[12px]",
+                            layer.done ? "bg-ocean border-ocean text-white" :
+                            layer.current ? "bg-ocean border-ocean text-white" :
+                            "bg-white border-line text-text-dim"
+                          )}>
+                            {layer.done ? "✓" : layer.num}
+                          </div>
+                          <small className="text-[10px] text-text-dim whitespace-nowrap">{layer.label}</small>
+                        </div>
+                        {i < 3 && (
+                          <div className={cn("w-8 h-0.5 mt-[-12px] mx-1", layer.done ? "bg-ocean" : "bg-line")} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-5 pb-5">
+                    <h4 className="text-[13.5px] font-semibold mb-1.5">Lapisan 2 dari 4 — Menganalisis</h4>
+                    <p className="text-[12.5px] text-text-dim leading-relaxed mb-3">
+                      Jelaskan perbedaan antara <code className="font-mono">justify-content</code> dan{" "}
+                      <code className="font-mono">align-items</code>. Berikan contoh kasus di mana
+                      masing-masing lebih tepat digunakan.
+                    </p>
+                    <textarea
+                      className="w-full min-h-[100px] border border-line font-sans text-[13px] p-3 resize-y text-text-primary bg-paper mb-3"
+                      placeholder="Tulis analisismu di sini..."
+                      defaultValue="justify-content mengatur posisi elemen sepanjang sumbu utama (main axis), sedangkan align-items mengatur posisi di sumbu silang (cross axis)..."
+                    />
+                    <div className="flex justify-between items-center">
+                      <small className="text-text-dim text-[11.5px]">
+                        Dinilai per lapisan — skor lapisan lebih tinggi bernilai lebih besar.
+                      </small>
+                      <button className="bg-[var(--ocean)] text-white border-none px-4 py-2 text-[12.5px] font-sans cursor-pointer">
+                        Kirim lapisan ini
                       </button>
                     </div>
                   </div>

@@ -16,6 +16,7 @@ enum LearningModel {
   PROBLEM_SOLVING
   PBL
   TRANSFORMATIF
+  DEEP_LEARNING
 }
 
 enum SoalStatus {

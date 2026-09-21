@@ -28,6 +28,7 @@ export function getModelLabel(model: string): string {
     PROBLEM_SOLVING: "Problem Solving",
     PBL: "Project Based Learning",
     TRANSFORMATIF: "Transformatif",
+    DEEP_LEARNING: "Deep Learning",
   };
   return labels[model] || model;
 }
@@ -37,6 +38,7 @@ export function getModelColor(model: string): string {
     PROBLEM_SOLVING: "pcb",
     PBL: "copper",
     TRANSFORMATIF: "reflect",
+    DEEP_LEARNING: "ocean",
   };
   return colors[model] || "pcb";
 }

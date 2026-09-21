@@ -24,6 +24,12 @@ const models = [
     desc: "Soal berbentuk potongan proyek nyata yang dikerjakan bertahap hingga jadi satu output utuh.",
     tag: "Multi-tahap",
   },
+  {
+    id: "DEEP_LEARNING" as const,
+    name: "Deep Learning",
+    desc: "Soal berlapis yang menuntun siswa dari memahami konsep, menganalisis, mengevaluasi, hingga mencipta solusi sendiri.",
+    tag: "4 lapisan analisis",
+  },
 ];
 
 const topics = [
@@ -67,7 +73,7 @@ export default function BuatSoalPage() {
       </p>
 
       <div className="text-[13px] font-semibold mb-3">Model pembelajaran</div>
-      <div className="grid grid-cols-3 gap-3.5 mb-7">
+      <div className="grid grid-cols-2 gap-3.5 mb-7">
         {models.map((m) => (
           <button
             key={m.id}

@@ -16,12 +16,14 @@ export default function HasilPage() {
           { id: "ps", label: "Problem Solving" },
           { id: "pbl", label: "Project Based Learning" },
           { id: "tf", label: "Transformatif" },
+          { id: "dl", label: "Deep Learning" },
         ]}
       >
         {(activeTab) => {
           if (activeTab === "ps") return <ProblemSolvingResult />;
           if (activeTab === "pbl") return <PBLResult />;
-          return <TransformatifResult />;
+          if (activeTab === "tf") return <TransformatifResult />;
+          return <DeepLearningResult />;
         }}
       </Tabs>
     </div>
@@ -146,6 +148,68 @@ function TransformatifResult() {
           <span className="text-[11px] font-mono px-2 py-0.5 bg-white border border-line">Mengaitkan dengan baik</span>
         </span>{" "}
         — tidak ada skor angka otomatis untuk soal reflektif.
+      </div>
+    </div>
+  );
+}
+
+function DeepLearningResult() {
+  const layers = [
+    { num: 1, label: "Memahami", score: 20, maxScore: 20, status: "done" as const },
+    { num: 2, label: "Menganalisis", score: 25, maxScore: 30, status: "done" as const },
+    { num: 3, label: "Mengevaluasi", score: null, maxScore: 25, status: "current" as const },
+    { num: 4, label: "Mencipta", score: null, maxScore: 25, status: "locked" as const },
+  ];
+  const totalEarned = layers.reduce((acc, l) => acc + (l.score || 0), 0);
+  const totalMax = layers.reduce((acc, l) => acc + l.maxScore, 0);
+
+  return (
+    <div>
+      <p className="text-[13.5px] text-text-dim mb-0">
+        Analisis Mendalam: Flexbox vs Grid — dinilai per lapisan analisis.
+      </p>
+      <div className="flex items-center gap-5 my-5">
+        <div className="font-mono text-[38px] font-semibold text-[var(--ocean)]">
+          {totalEarned}<span className="text-[16px] text-text-dim">/{totalMax}</span>
+        </div>
+        <div className="text-[13px] text-text-dim max-w-[360px]">
+          2 dari 4 lapisan selesai. Selesaikan lapisan berikutnya untuk mendapat skor penuh.
+        </div>
+      </div>
+      <div className="max-w-[520px]">
+        {layers.map((layer, i) => (
+          <div
+            key={i}
+            className={cn(
+              "flex justify-between items-center px-4 py-3 border-b border-line text-[13px]",
+              i === 0 && "border-t"
+            )}
+          >
+            <span className="flex items-center gap-2">
+              <span className={cn(
+                "w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] border-[1.5px]",
+                layer.status === "done" ? "bg-[var(--ocean)] border-[var(--ocean)] text-white" :
+                layer.status === "current" ? "bg-[var(--ocean)] border-[var(--ocean)] text-white" :
+                "bg-white border-line text-text-dim"
+              )}>
+                {layer.status === "done" ? "✓" : layer.num}
+              </span>
+              Lapisan {layer.num} — {layer.label}
+            </span>
+            <span className={cn(
+              "font-mono text-[12px] font-semibold",
+              layer.status === "done" ? "text-[var(--ocean)]" :
+              layer.status === "current" ? "text-amber" : "text-text-dim"
+            )}>
+              {layer.status === "done" ? `${layer.score}/${layer.maxScore}` :
+               layer.status === "current" ? "SEDANG DIKERJAKAN" : "TERKUNCI"}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="border border-dashed border-line p-3 text-[12px] text-text-dim leading-relaxed mt-3 max-w-[520px]">
+        Skor akhir dihitung dari semua lapisan — lapisan lebih tinggi (Mengevaluasi, Mencipta)
+        punya bobot lebih besar. Lapisan berikutnya terbuka setelah lapisan sebelumnya dikirim.
       </div>
     </div>
   );

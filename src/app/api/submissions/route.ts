@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireSiswa } from "@/lib/session";
 import { initializeMilestones } from "@/engines/pbl";
+import { initializeLayers } from "@/engines/deep-learning";
 
 export async function GET(req: Request) {
   try {
@@ -72,6 +73,10 @@ export async function POST(req: Request) {
 
     if (soal.learningModel === "PBL") {
       await initializeMilestones(submission.id, soalId);
+    }
+
+    if (soal.learningModel === "DEEP_LEARNING") {
+      await initializeLayers(submission.id, soalId);
     }
 
     return NextResponse.json(submission, { status: 201 });

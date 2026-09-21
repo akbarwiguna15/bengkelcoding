@@ -6,6 +6,6 @@ interface LearningModelBadgeProps {
 }
 
 export function LearningModelBadge({ model }: LearningModelBadgeProps) {
-  const color = getModelColor(model) as "pcb" | "copper" | "reflect";
+  const color = getModelColor(model) as "pcb" | "copper" | "reflect" | "ocean";
   return <Badge variant={color}>{getModelLabel(model)}</Badge>;
 }

@@ -15,6 +15,8 @@
   --rust-soft: #f4ddd1;
   --reflect: #5b5583;
   --reflect-soft: #e9e6f1;
+  --ocean: #2b7a8c;
+  --ocean-soft: #dff0f3;
   --line: #c9c3af;
   --text: #1c2620;
   --text-dim: #5c6960;
@@ -35,6 +37,8 @@
   --color-rust-soft: var(--rust-soft);
   --color-reflect: var(--reflect);
   --color-reflect-soft: var(--reflect-soft);
+  --color-ocean: var(--ocean);
+  --color-ocean-soft: var(--ocean-soft);
   --color-line: var(--line);
   --color-text-primary: var(--text);
   --color-text-dim: var(--text-dim);

@@ -23,7 +23,7 @@ export const joinKelasSchema = z.object({
 export const createSoalSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
-  learningModel: z.enum(["PROBLEM_SOLVING", "PBL", "TRANSFORMATIF"]),
+  learningModel: z.enum(["PROBLEM_SOLVING", "PBL", "TRANSFORMATIF", "DEEP_LEARNING"]),
   topic: z.string().min(1),
   difficulty: z.number().min(1).max(3),
   starterCode: z.string().optional(),
@@ -31,7 +31,7 @@ export const createSoalSchema = z.object({
 });
 
 export const generateSoalSchema = z.object({
-  learningModel: z.enum(["PROBLEM_SOLVING", "PBL", "TRANSFORMATIF"]),
+  learningModel: z.enum(["PROBLEM_SOLVING", "PBL", "TRANSFORMATIF", "DEEP_LEARNING"]),
   topic: z.string().min(1),
   difficulty: z.number().min(1).max(3),
   count: z.number().min(1).max(5),
