@@ -31,6 +31,36 @@ function findField(row: Record<string, unknown>, candidates: string[]): unknown 
   return null;
 }
 
+async function parseDocx(buffer: ArrayBuffer): Promise<ParsedStudent[]> {
+  const mammoth = await import("mammoth");
+  const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
+  const lines = result.value
+    .split("\n")
+    .map((l: string) => l.trim())
+    .filter((l: string) => l.length > 0);
+
+  const students: ParsedStudent[] = [];
+  const namePattern = /^\d+[.)]\s*(.+)/;
+  const skipWords = ["no", "nama", "nis", "kelas", "daftar", "siswa", "halaman", "page"];
+
+  for (const line of lines) {
+    const match = namePattern.exec(line);
+    if (match) {
+      const name = match[1].replace(/\s{2,}/g, " ").trim();
+      if (name.length >= 2 && name.length <= 100) {
+        students.push({ name, email: null });
+      }
+      continue;
+    }
+    const lower = line.toLowerCase();
+    if (skipWords.some((w) => lower.startsWith(w))) continue;
+    if (/^[A-Z][a-z]/.test(line) && line.length >= 3 && line.length <= 100 && !/\d{4}/.test(line)) {
+      students.push({ name: line, email: null });
+    }
+  }
+  return students;
+}
+
 async function parsePdf(buffer: ArrayBuffer): Promise<ParsedStudent[]> {
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
@@ -87,9 +117,9 @@ export async function POST(
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!["xlsx", "xls", "pdf"].includes(ext || "")) {
+    if (!["xlsx", "xls", "pdf", "docx", "doc"].includes(ext || "")) {
       return NextResponse.json(
-        { error: "Format file harus .xlsx, .xls, atau .pdf" },
+        { error: "Format file harus .xlsx, .xls, .docx, atau .pdf" },
         { status: 400 }
       );
     }
@@ -99,6 +129,8 @@ export async function POST(
 
     if (ext === "pdf") {
       parsed = await parsePdf(buffer);
+    } else if (ext === "docx" || ext === "doc") {
+      parsed = await parseDocx(buffer);
     } else {
       parsed = parseExcel(buffer);
     }

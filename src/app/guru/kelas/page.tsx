@@ -226,7 +226,7 @@ export default function KelolaKelasPage() {
       <input
         ref={fileRef}
         type="file"
-        accept=".xlsx,.xls,.pdf"
+        accept=".xlsx,.xls,.pdf,.docx,.doc"
         className="hidden"
         onChange={handleFileSelect}
       />
@@ -398,10 +398,10 @@ export default function KelolaKelasPage() {
         <div className="mt-6 text-[12.5px] text-text-dim leading-relaxed max-w-[560px]">
           <strong>Format file import:</strong> File Excel (.xlsx) harus punya
           kolom <span className="font-mono">Nama</span> (wajib) dan{" "}
-          <span className="font-mono">Email</span> (opsional). File PDF
-          akan dibaca otomatis dari daftar bernomor (1. Nama Siswa, 2. Nama
-          Siswa, dst). Siswa yang belum punya akun akan dibuatkan otomatis
-          dengan password default{" "}
+          <span className="font-mono">Email</span> (opsional). File Word
+          (.docx) dan PDF akan dibaca otomatis dari daftar bernomor (1.
+          Nama Siswa, 2. Nama Siswa, dst). Siswa yang belum punya akun
+          akan dibuatkan otomatis dengan password default{" "}
           <span className="font-mono">siswa123</span>.
         </div>
       )}
