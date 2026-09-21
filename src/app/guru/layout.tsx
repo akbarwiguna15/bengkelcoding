@@ -6,22 +6,28 @@ import { Providers } from "@/components/providers";
 
 const guruNav = [
   {
-    href: "/guru/soal/buat",
-    label: "Pilih Model & Materi",
-    sublabel: "Konfigurasi pembuatan soal",
+    href: "/guru/kelas",
+    label: "Kelola Kelas",
+    sublabel: "Buat kelas & import siswa",
     step: 1,
+  },
+  {
+    href: "/guru/soal/buat",
+    label: "Buat Soal",
+    sublabel: "Pilih model & materi",
+    step: 2,
   },
   {
     href: "/guru/soal",
     label: "Verifikasi Soal",
     sublabel: "Tinjau sebelum tayang",
-    step: 2,
+    step: 3,
   },
   {
     href: "/guru/dashboard",
     label: "Rekap Nilai",
     sublabel: "Progres tiap siswa",
-    step: 3,
+    step: 4,
   },
 ];
 

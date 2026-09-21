@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,12 @@ import { cn } from "@/lib/utils";
 
 type Step = "kelas" | "materi" | "model" | "metode" | "manual" | "ai-review";
 type LearningModel = "PROBLEM_SOLVING" | "PBL" | "TRANSFORMATIF" | "DEEP_LEARNING";
+
+interface KelasItem {
+  id: string;
+  name: string;
+  _count: { members: number; assignments: number };
+}
 
 interface AIDraft {
   id: string;
@@ -24,15 +30,6 @@ interface AICorrection {
   message: string;
   suggestion?: string;
 }
-
-const kelasList = [
-  { id: "x-rpl-1", name: "X RPL 1", siswa: 30 },
-  { id: "x-rpl-2", name: "X RPL 2", siswa: 28 },
-  { id: "xi-rpl-1", name: "XI RPL 1", siswa: 32 },
-  { id: "xi-rpl-2", name: "XI RPL 2", siswa: 28 },
-  { id: "xii-rpl-1", name: "XII RPL 1", siswa: 26 },
-  { id: "xii-rpl-2", name: "XII RPL 2", siswa: 24 },
-];
 
 const materiByTingkat: Record<string, string[]> = {
   "Kelas X": [
@@ -154,10 +151,30 @@ const stepLabels: Record<Step, string> = {
 export default function BuatSoalPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("kelas");
+  const [kelasList, setKelasList] = useState<KelasItem[]>([]);
+  const [kelasLoaded, setKelasLoaded] = useState(false);
   const [selectedKelas, setSelectedKelas] = useState<string | null>(null);
   const [selectedMateri, setSelectedMateri] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<LearningModel | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/kelas")
+      .then((r) => r.json())
+      .then((data) => {
+        setKelasList(
+          Array.isArray(data)
+            ? data.map((k: KelasItem) => ({
+                id: k.id,
+                name: k.name,
+                _count: k._count,
+              }))
+            : []
+        );
+      })
+      .catch(() => {})
+      .finally(() => setKelasLoaded(true));
+  }, []);
 
   // Manual form
   const [manualTitle, setManualTitle] = useState("");
@@ -315,31 +332,48 @@ export default function BuatSoalPage() {
           <p className="text-[13.5px] text-text-dim mb-5 max-w-[520px]">
             Soal yang dibuat akan ditugaskan ke kelas yang dipilih.
           </p>
-          <div className="grid grid-cols-3 gap-3 mb-6 max-w-[560px]">
-            {kelasList.map((k) => (
-              <button
-                key={k.id}
-                onClick={() => setSelectedKelas(k.id)}
-                className={cn(
-                  "border bg-white p-3.5 cursor-pointer text-left font-sans transition-colors",
-                  selectedKelas === k.id
-                    ? "border-pcb bg-pcb-soft border-[1.5px]"
-                    : "border-line hover:border-pcb"
-                )}
+
+          {!kelasLoaded ? (
+            <div className="text-[13px] text-text-dim mb-6">Memuat kelas...</div>
+          ) : kelasList.length === 0 ? (
+            <div className="border border-dashed border-line bg-white p-6 text-center mb-6 max-w-[560px]">
+              <div className="text-[14px] font-semibold mb-1">Belum ada kelas</div>
+              <p className="text-[13px] text-text-dim mb-3">
+                Buat kelas terlebih dahulu di menu Kelola Kelas sebelum membuat soal.
+              </p>
+              <Button variant="ghost" onClick={() => router.push("/guru/kelas")}>
+                Buka Kelola Kelas →
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-6 max-w-[560px]">
+                {kelasList.map((k) => (
+                  <button
+                    key={k.id}
+                    onClick={() => setSelectedKelas(k.id)}
+                    className={cn(
+                      "border bg-white p-3.5 cursor-pointer text-left font-sans transition-colors",
+                      selectedKelas === k.id
+                        ? "border-pcb bg-pcb-soft border-[1.5px]"
+                        : "border-line hover:border-pcb"
+                    )}
+                  >
+                    <div className="font-semibold text-[14px]">{k.name}</div>
+                    <div className="text-[12px] text-text-dim mt-0.5">
+                      {k._count.members} siswa
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <Button
+                onClick={() => setStep("materi")}
+                disabled={!selectedKelas}
               >
-                <div className="font-semibold text-[14px]">{k.name}</div>
-                <div className="text-[12px] text-text-dim mt-0.5">
-                  {k.siswa} siswa
-                </div>
-              </button>
-            ))}
-          </div>
-          <Button
-            onClick={() => setStep("materi")}
-            disabled={!selectedKelas}
-          >
-            Lanjut ke materi →
-          </Button>
+                Lanjut ke materi →
+              </Button>
+            </>
+          )}
         </div>
       )}
 
