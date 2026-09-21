@@ -38,12 +38,6 @@ const materiByTingkat: Record<string, string[]> = {
     "Pemrograman Javascript",
     "GIT Workflow",
   ],
-  "Kelas X Mobile": [
-    "Logika dan Algoritma Dasar",
-    "Pemrograman Dart Dasar",
-    "Pemrograman Dart OOP",
-    "GIT Workflow",
-  ],
   "Kelas XI Web": [
     "Rest API",
     "Node JS",
