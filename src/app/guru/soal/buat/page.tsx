@@ -32,23 +32,30 @@ interface AICorrection {
 }
 
 const materiByTingkat: Record<string, string[]> = {
-  "Kelas X": [
-    "HTML Dasar",
-    "CSS Dasar",
-    "Pengenalan Algoritma",
-    "Logika Pemrograman",
+  "Kelas X Web": [
+    "Logika dan Algoritma Dasar",
+    "HTML dan CSS",
+    "Pemrograman Javascript",
+    "GIT Workflow",
   ],
-  "Kelas XI": [
-    "CSS Layout & Flexbox",
-    "JavaScript Dasar",
-    "DOM & Event",
-    "Responsive Design",
+  "Kelas X Mobile": [
+    "Logika dan Algoritma Dasar",
+    "Pemrograman Dart Dasar",
+    "Pemrograman Dart OOP",
+    "GIT Workflow",
   ],
-  "Kelas XII": [
-    "JavaScript Lanjutan",
-    "Framework Frontend",
-    "Studi Kasus Web",
-    "Proyek Akhir",
+  "Kelas XI Web": [
+    "Rest API",
+    "Node JS",
+    "Database",
+    "Express JS",
+  ],
+  "Kelas XII Web": [
+    "Perancangan Desain Database (ERD)",
+    "Analisis dan Desain Sistem",
+    "Pembuatan Web App dan Fitur AI",
+    "Keamanan dan Kualitas Kode",
+    "Deployment ke Hosting",
   ],
 };
 
