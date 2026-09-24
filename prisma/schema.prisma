@@ -107,6 +107,8 @@ model Soal {
   createdById   String        @map("created_by_id")
   starterCode   String?       @db.Text @map("starter_code")
   language      String?
+  regime        String?       @default("verbose") // 'silent' | 'verbose' — derived from materi, overridable by guru
+  estimatedMinutes Int?       @map("estimated_minutes") // guru estimate, fallback for timeRatio before class median is available
   aiPromptUsed  String?       @db.Text @map("ai_prompt_used")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
@@ -309,4 +311,23 @@ model SyncLog {
 
   @@index([userId, syncedAt])
   @@map("sync_logs")
+}
+
+model StudentEvent {
+  id        BigInt   @id @default(autoincrement())
+  studentId String   @map("student_id")
+  classId   String   @map("class_id")
+  taskId    String   @map("task_id")
+  attemptId String   @map("attempt_id")
+  type      String
+  payload   Json
+  clientTs  DateTime @map("client_ts")
+  serverTs  DateTime @default(now()) @map("server_ts")
+  seq       Int
+
+  @@unique([attemptId, seq])
+  @@index([studentId, taskId, clientTs])
+  @@index([attemptId, seq])
+  @@index([classId, clientTs])
+  @@map("student_events")
 }

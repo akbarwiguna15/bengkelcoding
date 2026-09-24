@@ -1,9 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+const ProblemSolvingEditor = dynamic(
+  () =>
+    import("@/components/editor/problem-solving-editor").then(
+      (m) => m.ProblemSolvingEditor
+    ),
+  { ssr: false }
+);
 
 interface SoalItem {
   id: string;
@@ -99,67 +108,27 @@ export default function LatihanPage() {
                 )}
               </div>
 
-              {/* Inline editor for Problem Solving */}
+              {/* Inline editor for Problem Solving — CodeMirror 6 + live preview */}
               {activeEditor === soal.id && soal.learningModel === "PROBLEM_SOLVING" && (
-                <div className="mt-4 grid grid-cols-[300px_1fr] border border-line h-[400px]">
-                  <div className="bg-white p-5 overflow-y-auto border-r border-line">
-                    <h2 className="text-[15px] font-semibold mb-2.5">Instruksi</h2>
-                    <p className="text-[13px] text-text-dim leading-relaxed">
-                      Buat navigasi horizontal menggunakan Flexbox yang menyusun 4 menu
-                      secara rata kanan-kiri (space-between), tanpa mengubah struktur HTML
-                      yang tersedia.
-                    </p>
-                    <ul className="mt-4 list-none p-0 space-y-1.5">
-                      <li className="text-[12.5px] text-text-dim">
-                        ✓ Kriteria: elemen <code className="font-mono">.navbar</code> memakai{" "}
-                        <code className="font-mono">display: flex</code>
-                      </li>
-                      <li className="text-[12.5px] text-text-dim">
-                        ✓ Kriteria: menu tersusun rata dengan{" "}
-                        <code className="font-mono">justify-content: space-between</code>
-                      </li>
-                      <li className="text-[12.5px] text-text-dim">
-                        ✓ Kriteria: struktur HTML tidak diubah
-                      </li>
-                    </ul>
-                  </div>
-                  <div className="flex flex-col bg-ink">
-                    <div className="flex justify-between items-center px-3.5 py-2.5 bg-ink-soft">
-                      <span className="font-mono text-[12px] text-[#9fb3a8]">navbar.css</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={closeEditor}
-                          className="bg-transparent border border-[#3a4d43] text-[#cfe0d6] px-3 py-1.5 text-[12px] font-sans cursor-pointer"
-                        >
-                          ← Daftar soal
-                        </button>
-                        <button className="bg-copper text-white border-none px-3 py-1.5 text-[12px] font-sans cursor-pointer">
-                          Kirim jawaban
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex-1 p-2.5 font-mono text-[13px] text-[#d7e6dd] leading-[1.9] overflow-y-auto">
-                      <div className="px-4 py-0.5"><span className="text-[#5c7768] inline-block w-5 select-none">1</span>.navbar {"{"}</div>
-                      <div className="px-4 py-0.5 bg-[rgba(177,80,44,0.25)] border-l-[3px] border-rust pl-3.5">
-                        <span className="text-[#5c7768] inline-block w-5 select-none">2</span>
-                        &nbsp;&nbsp;dispay: <span className="text-[#e3ab6d]">flex</span>;
-                      </div>
-                      <div className="px-4 py-0.5 bg-[rgba(255,255,255,0.06)] border-l-[3px] border-pcb pl-3.5">
-                        <span className="text-[#5c7768] inline-block w-5 select-none">3</span>
-                        &nbsp;&nbsp;justify-content: <span className="inline-block w-1.5 h-3.5 bg-[#cfe0d6] align-text-bottom animate-blink" />
-                      </div>
-                      <div className="px-4 py-0.5"><span className="text-[#5c7768] inline-block w-5 select-none">4</span>{"}"}</div>
-                    </div>
-                    <div className="bg-[#0f1a15] text-[#9fb3a8] font-mono text-[12px] px-4 py-2.5 border-t border-[#2a3b32]">
-                      <span className="text-[#e0967a]">⚠ Baris 2: properti &quot;dispay&quot; tidak dikenali</span>
-                      {" "}— koreksi berjalan tiap kamu pindah baris
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11.5px] text-text-dim px-4 py-2 bg-[#0f1a15]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-pcb flex-none" />
-                      <span className="text-[#9fb3a8]">Tersimpan & tersinkron ke server</span>
-                    </div>
-                  </div>
-                </div>
+                <ProblemSolvingEditor
+                  soalId={soal.id}
+                  title="Instruksi"
+                  instructions="Buat navigasi horizontal menggunakan Flexbox yang menyusun 4 menu secara rata kanan-kiri (space-between), tanpa mengubah struktur HTML yang tersedia."
+                  criteria={[
+                    'Elemen .navbar memakai display: flex',
+                    'Menu tersusun rata dengan justify-content: space-between',
+                    'Struktur HTML tidak diubah',
+                  ]}
+                  starterCode={`.navbar {\n  display: flex;\n  justify-content: ;\n}`}
+                  starterHtml={`<nav class="navbar">\n  <a href="#">Beranda</a>\n  <a href="#">Tentang</a>\n  <a href="#">Layanan</a>\n  <a href="#">Kontak</a>\n</nav>`}
+                  language="css"
+                  fileName="navbar.css"
+                  regime="silent"
+                  relevantProps={["display", "flex-direction", "justify-content", "align-items", "gap"]}
+                  studentId="demo-student"
+                  classId="demo-class"
+                  onClose={closeEditor}
+                />
               )}
 
               {/* Inline editor for PBL */}
