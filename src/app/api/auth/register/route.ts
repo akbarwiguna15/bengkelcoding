@@ -32,9 +32,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {
+    console.error("Register error:", error);
     if (error instanceof Error && error.name === "ZodError") {
       return NextResponse.json({ error: "Data tidak valid" }, { status: 400 });
     }
-    return NextResponse.json({ error: "Terjadi kesalahan" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Terjadi kesalahan";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
