@@ -95,20 +95,7 @@ export function ProblemSolvingEditor({
             const propMatch = trimmed.match(/^\s*([\w-]+)\s*:/);
             if (propMatch) {
               const prop = propMatch[1];
-              const knownProps = [
-                "display","flex-direction","justify-content","align-items",
-                "gap","margin","padding","width","height","color",
-                "background","background-color","border","font-size",
-                "font-family","font-weight","text-align","position",
-                "top","right","bottom","left","grid-template-columns",
-                "grid-template-rows","flex-wrap","flex","order",
-                "align-self","min-width","max-width","min-height",
-                "max-height","overflow","opacity","z-index",
-                "border-radius","box-shadow","transition","transform",
-                "line-height","letter-spacing","text-decoration",
-                "list-style","cursor","visibility",
-              ];
-              if (!knownProps.includes(prop)) {
+              if (!CSS.supports(prop, "initial")) {
                 errors.push({
                   line: i + 1,
                   message: `Baris ${i + 1}: properti "${prop}" tidak dikenali`,
@@ -218,10 +205,9 @@ export function ProblemSolvingEditor({
   }, [handRaised, record]);
 
   const handleClose = useCallback(() => {
-    record("attempt_close", { reason: "back" });
     flushBuffer();
     onClose();
-  }, [record, onClose]);
+  }, [onClose]);
 
   const isSilent = regime === "silent";
 

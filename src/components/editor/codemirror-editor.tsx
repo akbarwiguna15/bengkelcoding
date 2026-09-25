@@ -162,19 +162,19 @@ export function CodeMirrorEditor({
           const doc = update.state.doc.toString();
           onChange?.(doc);
 
-          update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+          update.changes.iterChanges((fromA, toA, fromB, _toB, inserted) => {
             const removed = toA - fromA;
             const added = inserted.length;
 
             aggRef.current.charsAdded += added;
             aggRef.current.charsRemoved += removed;
 
-            const line = update.state.doc.lineAt(fromA).number;
+            const line = update.state.doc.lineAt(fromB).number;
             aggRef.current.linesTouched.add(line);
 
             if (language === "css") {
-              const newText = inserted.toString();
-              for (const p of extractCSSProps(newText)) {
+              const lineText = update.state.doc.lineAt(fromB).text;
+              for (const p of extractCSSProps(lineText)) {
                 aggRef.current.propsTouched.add(p);
               }
             }
