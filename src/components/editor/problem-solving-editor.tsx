@@ -47,12 +47,7 @@ export function ProblemSolvingEditor({
   >([]);
   const [handRaised, setHandRaised] = useState(false);
 
-  const { record } = useEventRecorder({
-    studentId,
-    classId,
-    taskId: soalId,
-    attemptId,
-  });
+  const { record } = useEventRecorder(studentId, classId, soalId, attemptId);
 
   useEffect(() => {
     record("attempt_open", {
