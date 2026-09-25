@@ -9,6 +9,22 @@ interface SelectorProbe {
   matchCount: number;
 }
 
+interface ProbeResult {
+  kind: "probe";
+  domHash: string;
+  styleHash: string;
+  computed: Record<string, string>;
+  selectors: SelectorProbe[];
+}
+
+interface ProbeError {
+  kind: "error";
+  message: string;
+  line: number | null;
+}
+
+type ProbeMessage = ProbeResult | ProbeError;
+
 interface PreviewPanelProps {
   htmlCode: string;
   cssCode: string;
@@ -46,176 +62,6 @@ function errorSignature(msg: string): string {
   return hashString(normalized);
 }
 
-export function PreviewPanel({
-  htmlCode,
-  cssCode,
-  relevantProps = [],
-  trigger = "auto",
-  onRender,
-  onSelectorProbe,
-  onVisualDiff,
-  onConsoleError,
-}: PreviewPanelProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevStyleHashRef = useRef<string>("");
-  const prevComputedRef = useRef<Map<string, string>>(new Map());
-  const [hasError, setHasError] = useState(false);
-
-  const renderPreview = useCallback(
-    (trig: "auto" | "manual") => {
-      const iframe = iframeRef.current;
-      if (!iframe) return;
-
-      const doc = iframe.contentDocument;
-      if (!doc) return;
-
-      const fullHtml = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${cssCode}</style></head>
-<body>${htmlCode}</body>
-</html>`;
-
-      doc.open();
-      doc.write(fullHtml);
-      doc.close();
-
-      setHasError(false);
-
-      setTimeout(() => {
-        try {
-          const body = doc.body;
-          if (!body) return;
-
-          const domHash = hashString(body.innerHTML);
-
-          const computedMap = new Map<string, string>();
-          const allElements = body.querySelectorAll("*");
-          for (const el of allElements) {
-            const computed = doc.defaultView?.getComputedStyle(el);
-            if (!computed) continue;
-            for (const prop of relevantProps) {
-              const key = `${el.tagName}.${prop}`;
-              computedMap.set(key, computed.getPropertyValue(prop));
-            }
-          }
-
-          const styleEntries = Array.from(computedMap.entries())
-            .sort()
-            .map(([k, v]) => `${k}:${v}`)
-            .join("|");
-          const styleHash = hashString(styleEntries);
-
-          const changedFromPrev = styleHash !== prevStyleHashRef.current;
-
-          onRender?.({
-            trigger: trig,
-            domHash,
-            styleHash,
-            changedFromPrev,
-          });
-
-          let changedNodeCount = 0;
-          let changedPropCount = 0;
-          if (prevComputedRef.current.size > 0) {
-            for (const [key, val] of computedMap) {
-              const prev = prevComputedRef.current.get(key);
-              if (prev !== val) {
-                changedPropCount++;
-                const node = key.split(".")[0];
-                if (!computedMap.has(`_counted_${node}`)) {
-                  changedNodeCount++;
-                  computedMap.set(`_counted_${node}`, "1");
-                }
-              }
-            }
-            onVisualDiff?.({ changedNodeCount, changedPropCount });
-          }
-
-          prevStyleHashRef.current = styleHash;
-          prevComputedRef.current = computedMap;
-
-          const selectors = extractSelectors(cssCode);
-          const probes: SelectorProbe[] = selectors.map((sel) => {
-            try {
-              const matchCount = body.querySelectorAll(sel).length;
-              return { sel, matchCount };
-            } catch {
-              return { sel, matchCount: 0 };
-            }
-          });
-          if (probes.length > 0) {
-            onSelectorProbe?.({ selectors: probes });
-          }
-        } catch {
-          // render inspection failed silently
-        }
-      }, 50);
-    },
-    [cssCode, htmlCode, relevantProps, onRender, onSelectorProbe, onVisualDiff]
-  );
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      renderPreview(trigger);
-    }, RENDER_DEBOUNCE_MS);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [htmlCode, cssCode, trigger, renderPreview]);
-
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
-    const handleLoad = () => {
-      const win = iframe.contentWindow as (Window & typeof globalThis) | null;
-      if (!win) return;
-      const origError = win.console.error;
-      win.console.error = (...args: unknown[]) => {
-        const msg = args.map(String).join(" ");
-        setHasError(true);
-        onConsoleError?.({
-          message: msg,
-          signature: errorSignature(msg),
-          line: null,
-          seen: false,
-        });
-        origError.apply(win.console, args);
-      };
-    };
-
-    iframe.addEventListener("load", handleLoad);
-    return () => iframe.removeEventListener("load", handleLoad);
-  }, [onConsoleError]);
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 bg-paper-dim border-b border-line">
-        <span className="text-[12px] font-mono text-text-dim">Preview</span>
-        <div className="flex items-center gap-2">
-          {hasError && (
-            <span className="text-[11px] text-rust font-mono">error</span>
-          )}
-          <button
-            onClick={() => renderPreview("manual")}
-            className="text-[11px] px-2 py-0.5 border border-line bg-white text-text-dim font-sans cursor-pointer hover:border-pcb hover:text-pcb"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-      <iframe
-        ref={iframeRef}
-        sandbox="allow-scripts"
-        className="flex-1 w-full bg-white border-none"
-        title="Preview"
-      />
-    </div>
-  );
-}
-
 function extractSelectors(css: string): string[] {
   const sels: string[] = [];
   const re = /([^{}@]+)\s*\{/g;
@@ -231,4 +77,220 @@ function extractSelectors(css: string): string[] {
     }
   }
   return sels;
+}
+
+function buildProbeScript(
+  relevantProps: string[],
+  selectors: string[]
+): string {
+  return `
+<script>
+(function(){
+  var H=function(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return h.toString(36);};
+
+  // error capture
+  var origErr=console.error;
+  console.error=function(){
+    var m=[].slice.call(arguments).map(String).join(" ");
+    window.parent.postMessage({kind:"error",message:m,line:null},"*");
+    origErr.apply(console,arguments);
+  };
+  window.addEventListener("error",function(e){
+    window.parent.postMessage({kind:"error",message:e.message||String(e),line:e.lineno||null},"*");
+  });
+
+  // wait for layout
+  setTimeout(function(){
+    try{
+      var body=document.body;
+      if(!body)return;
+      var domHash=H(body.innerHTML);
+
+      // computed styles keyed by position index
+      var props=${JSON.stringify(relevantProps)};
+      var computed={};
+      var els=body.querySelectorAll("*");
+      for(var i=0;i<els.length;i++){
+        var cs=window.getComputedStyle(els[i]);
+        for(var j=0;j<props.length;j++){
+          var key=i+"."+els[i].tagName+"."+props[j];
+          computed[key]=cs.getPropertyValue(props[j]);
+        }
+      }
+
+      var entries=[];
+      var keys=Object.keys(computed).sort();
+      for(var k=0;k<keys.length;k++){entries.push(keys[k]+":"+computed[keys[k]]);}
+      var styleHash=H(entries.join("|"));
+
+      // selector probes
+      var sels=${JSON.stringify(selectors)};
+      var probes=[];
+      for(var s=0;s<sels.length;s++){
+        try{probes.push({sel:sels[s],matchCount:body.querySelectorAll(sels[s]).length});}
+        catch(e){probes.push({sel:sels[s],matchCount:0});}
+      }
+
+      window.parent.postMessage({
+        kind:"probe",
+        domHash:domHash,
+        styleHash:styleHash,
+        computed:computed,
+        selectors:probes
+      },"*");
+    }catch(ex){
+      window.parent.postMessage({kind:"error",message:String(ex),line:null},"*");
+    }
+  },60);
+})();
+<\/script>`;
+}
+
+export function PreviewPanel({
+  htmlCode,
+  cssCode,
+  relevantProps = [],
+  trigger = "auto",
+  onRender,
+  onSelectorProbe,
+  onVisualDiff,
+  onConsoleError,
+}: PreviewPanelProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevStyleHashRef = useRef<string>("");
+  const prevComputedRef = useRef<Record<string, string>>({});
+  const triggerRef = useRef<"auto" | "manual">(trigger);
+  const [hasError, setHasError] = useState(false);
+  const seenErrorsRef = useRef<Set<string>>(new Set());
+
+  triggerRef.current = trigger;
+
+  const onRenderRef = useRef(onRender);
+  const onSelectorProbeRef = useRef(onSelectorProbe);
+  const onVisualDiffRef = useRef(onVisualDiff);
+  const onConsoleErrorRef = useRef(onConsoleError);
+  onRenderRef.current = onRender;
+  onSelectorProbeRef.current = onSelectorProbe;
+  onVisualDiffRef.current = onVisualDiff;
+  onConsoleErrorRef.current = onConsoleError;
+
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      const data = e.data as ProbeMessage;
+      if (!data || typeof data !== "object" || !("kind" in data)) return;
+
+      if (data.kind === "error") {
+        setHasError(true);
+        const sig = errorSignature(data.message);
+        const seen = seenErrorsRef.current.has(sig);
+        seenErrorsRef.current.add(sig);
+        onConsoleErrorRef.current?.({
+          message: data.message,
+          signature: sig,
+          line: data.line,
+          seen,
+        });
+        return;
+      }
+
+      if (data.kind === "probe") {
+        const changedFromPrev = data.styleHash !== prevStyleHashRef.current;
+
+        onRenderRef.current?.({
+          trigger: triggerRef.current,
+          domHash: data.domHash,
+          styleHash: data.styleHash,
+          changedFromPrev,
+        });
+
+        const prevKeys = Object.keys(prevComputedRef.current);
+        if (prevKeys.length > 0) {
+          const changedNodes = new Set<string>();
+          let changedPropCount = 0;
+          const allKeys = new Set([
+            ...prevKeys,
+            ...Object.keys(data.computed),
+          ]);
+          for (const key of allKeys) {
+            if (prevComputedRef.current[key] !== data.computed[key]) {
+              changedPropCount++;
+              const nodeId = key.split(".").slice(0, 2).join(".");
+              changedNodes.add(nodeId);
+            }
+          }
+          onVisualDiffRef.current?.({
+            changedNodeCount: changedNodes.size,
+            changedPropCount,
+          });
+        }
+
+        prevStyleHashRef.current = data.styleHash;
+        prevComputedRef.current = data.computed;
+
+        if (data.selectors.length > 0) {
+          onSelectorProbeRef.current?.({ selectors: data.selectors });
+        }
+      }
+    }
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const buildSrcdoc = useCallback(() => {
+    const selectors = extractSelectors(cssCode);
+    const probe = buildProbeScript(relevantProps, selectors);
+    return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>${cssCode}</style></head>
+<body>${htmlCode}${probe}</body>
+</html>`;
+  }, [htmlCode, cssCode, relevantProps]);
+
+  const updatePreview = useCallback(
+    (trig: "auto" | "manual") => {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      triggerRef.current = trig;
+      setHasError(false);
+      iframe.srcdoc = buildSrcdoc();
+    },
+    [buildSrcdoc]
+  );
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updatePreview(trigger);
+    }, RENDER_DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [htmlCode, cssCode, trigger, updatePreview]);
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-3 py-2 bg-paper-dim border-b border-line">
+        <span className="text-[12px] font-mono text-text-dim">Preview</span>
+        <div className="flex items-center gap-2">
+          {hasError && (
+            <span className="text-[11px] text-rust font-mono">error</span>
+          )}
+          <button
+            onClick={() => updatePreview("manual")}
+            className="text-[11px] px-2 py-0.5 border border-line bg-white text-text-dim font-sans cursor-pointer hover:border-pcb hover:text-pcb"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+      <iframe
+        ref={iframeRef}
+        sandbox="allow-scripts"
+        className="flex-1 w-full bg-white border-none"
+        title="Preview"
+      />
+    </div>
+  );
 }
