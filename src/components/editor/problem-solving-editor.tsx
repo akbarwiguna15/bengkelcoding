@@ -49,6 +49,9 @@ export function ProblemSolvingEditor({
 
   const { record } = useEventRecorder(studentId, classId, soalId, attemptId);
 
+  const lintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLintSigRef = useRef("");
+
   useEffect(() => {
     record("attempt_open", {
       regime,
@@ -58,6 +61,7 @@ export function ProblemSolvingEditor({
     return () => {
       record("attempt_close", { reason: "back" });
       flushBuffer();
+      if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -67,59 +71,68 @@ export function ProblemSolvingEditor({
       setCode(newCode);
 
       if (language === "css") {
-        const errors: { line: number; message: string }[] = [];
-        const lines = newCode.split("\n");
-        lines.forEach((line, i) => {
-          const trimmed = line.trim();
-          if (
-            trimmed &&
-            !trimmed.startsWith("/*") &&
-            !trimmed.startsWith("*") &&
-            !trimmed.startsWith("//") &&
-            !trimmed.endsWith("{") &&
-            !trimmed.endsWith("}") &&
-            !trimmed.endsWith(";") &&
-            trimmed.includes(":")
-          ) {
-            errors.push({
-              line: i + 1,
-              message: `Baris ${i + 1}: missing semicolon`,
-            });
-          }
-          const propMatch = trimmed.match(/^\s*([\w-]+)\s*:/);
-          if (propMatch) {
-            const prop = propMatch[1];
-            const knownProps = [
-              "display","flex-direction","justify-content","align-items",
-              "gap","margin","padding","width","height","color",
-              "background","background-color","border","font-size",
-              "font-family","font-weight","text-align","position",
-              "top","right","bottom","left","grid-template-columns",
-              "grid-template-rows","flex-wrap","flex","order",
-              "align-self","min-width","max-width","min-height",
-              "max-height","overflow","opacity","z-index",
-              "border-radius","box-shadow","transition","transform",
-              "line-height","letter-spacing","text-decoration",
-              "list-style","cursor","visibility",
-            ];
-            if (!knownProps.includes(prop)) {
+        if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
+        lintTimerRef.current = setTimeout(() => {
+          const errors: { line: number; message: string }[] = [];
+          const lines = newCode.split("\n");
+          lines.forEach((line, i) => {
+            const trimmed = line.trim();
+            if (
+              trimmed &&
+              !trimmed.startsWith("/*") &&
+              !trimmed.startsWith("*") &&
+              !trimmed.startsWith("//") &&
+              !trimmed.endsWith("{") &&
+              !trimmed.endsWith("}") &&
+              !trimmed.endsWith(";") &&
+              trimmed.includes(":")
+            ) {
               errors.push({
                 line: i + 1,
-                message: `Baris ${i + 1}: properti "${prop}" tidak dikenali`,
+                message: `Baris ${i + 1}: missing semicolon`,
               });
             }
-          }
-        });
-        setLintErrors(errors);
-        if (errors.length > 0) {
-          record("lint_result", {
-            errors: errors.map((e) => ({
-              line: e.line,
-              code: "unknown-prop",
-              message: e.message,
-            })),
+            const propMatch = trimmed.match(/^\s*([\w-]+)\s*:/);
+            if (propMatch) {
+              const prop = propMatch[1];
+              const knownProps = [
+                "display","flex-direction","justify-content","align-items",
+                "gap","margin","padding","width","height","color",
+                "background","background-color","border","font-size",
+                "font-family","font-weight","text-align","position",
+                "top","right","bottom","left","grid-template-columns",
+                "grid-template-rows","flex-wrap","flex","order",
+                "align-self","min-width","max-width","min-height",
+                "max-height","overflow","opacity","z-index",
+                "border-radius","box-shadow","transition","transform",
+                "line-height","letter-spacing","text-decoration",
+                "list-style","cursor","visibility",
+              ];
+              if (!knownProps.includes(prop)) {
+                errors.push({
+                  line: i + 1,
+                  message: `Baris ${i + 1}: properti "${prop}" tidak dikenali`,
+                });
+              }
+            }
           });
-        }
+          setLintErrors(errors);
+          if (errors.length > 0) {
+            const sig = errors.map((e) => `${e.line}:${e.message}`).join("|");
+            if (sig !== lastLintSigRef.current) {
+              lastLintSigRef.current = sig;
+              record("lint_result", {
+                errors: errors.map((e) => ({
+                  line: e.line,
+                  code: "unknown-prop",
+                  message: e.message,
+                })),
+              });
+            }
+          } else {
+            lastLintSigRef.current = "";
+          }
+        }, 700);
       }
     },
     [language, record]
