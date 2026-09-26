@@ -27,6 +27,17 @@ interface StudentRow {
   offlineNote?: string;
 }
 
+interface HintItem {
+  text: string;
+  revealed: boolean;
+  response: "paham" | "lagi" | null;
+}
+
+interface HintPanelState {
+  studentName: string;
+  soalNum: number;
+}
+
 function calcPrio(s: StudentRow): number {
   if (!s.hand || !s.hp) return 0;
   const p = s.hp;
@@ -94,8 +105,234 @@ const soalColors: Record<string, string> = {
   belum: "bg-white border-line border-dashed text-text-dim",
 };
 
+const demoCodeLines = [
+  ".navbar {",
+  "  display: flex;",
+  "  justify-content: flex-start;",
+  "  align-items: center;",
+  "  gap: 10px;",
+  "  padding: 0 16px;",
+  "}",
+];
+
+function HintPanel({
+  studentName,
+  soalNum,
+  onClose,
+}: {
+  studentName: string;
+  soalNum: number;
+  onClose: () => void;
+}) {
+  const [spotLines, setSpotLines] = useState<number[]>([]);
+  const [hints, setHints] = useState<HintItem[]>([
+    { text: "Perhatikan properti justify-content. Nilai apa yang membuat item tersebar rata?", revealed: true, response: "paham" },
+    { text: "Coba baca dokumentasi tentang space-between vs flex-start.", revealed: false, response: null },
+  ]);
+  const [hintDraft, setHintDraft] = useState("");
+
+  function toggleSpot(line: number) {
+    setSpotLines((prev) =>
+      prev.includes(line) ? prev.filter((l) => l !== line) : [...prev, line]
+    );
+  }
+
+  function addHint() {
+    const t = hintDraft.trim();
+    if (!t) return;
+    setHints((prev) => [...prev, { text: t, revealed: false, response: null }]);
+    setHintDraft("");
+  }
+
+  function demoReveal() {
+    setHints((prev) => {
+      const next = [...prev];
+      for (let i = 0; i < next.length; i++) {
+        if (!next[i].revealed) {
+          next[i] = { ...next[i], revealed: true };
+          break;
+        }
+      }
+      return next;
+    });
+  }
+
+  function demoRespond() {
+    setHints((prev) => {
+      const next = [...prev];
+      for (let i = 0; i < next.length; i++) {
+        if (next[i].revealed && !next[i].response) {
+          next[i] = { ...next[i], response: Math.random() > 0.3 ? "paham" : "lagi" };
+          break;
+        }
+      }
+      return next;
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="bg-paper w-full max-w-[620px] mx-4 p-6 border border-line shadow-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center mb-1">
+          <h2 className="text-[16px] font-semibold">
+            Bantuan untuk {studentName}
+          </h2>
+          <button
+            className="text-[11px] px-2.5 py-1 border border-line bg-white text-text-primary hover:bg-paper-dim"
+            onClick={onClose}
+          >
+            &#10005; Tutup
+          </button>
+        </div>
+
+        <div className="text-[12.5px] text-text-dim mb-3.5">
+          Soal {soalNum} — Navigasi Flexbox &middot;{" "}
+          <span className="font-mono text-[11px] bg-amber-soft text-amber px-1.5 py-px">
+            sedang dikerjakan
+          </span>
+        </div>
+
+        {/* Code viewer */}
+        <div className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5">
+          Kode siswa saat ini{" "}
+          <span className="text-[10px] font-normal text-text-dim">
+            (klik baris untuk sorot)
+          </span>
+        </div>
+
+        <div className="border border-line bg-ink mb-4">
+          {demoCodeLines.map((line, i) => {
+            const isSpot = spotLines.includes(i);
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "flex items-baseline px-4 py-[3px] cursor-pointer transition-colors duration-150",
+                  isSpot ? "bg-amber/20" : "hover:bg-white/5"
+                )}
+                onClick={() => toggleSpot(i)}
+              >
+                <span className="w-6 text-right mr-3 text-[11px] text-text-dim/50 select-none font-mono">
+                  {i + 1}
+                </span>
+                <span className="font-mono text-[12.5px] text-paper">
+                  {line}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Spot indicator */}
+        {spotLines.length > 0 && (
+          <div className="text-[11.5px] text-amber mb-3.5 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber inline-block" />
+            {spotLines.length} baris disorot — siswa melihat highlight di editor
+            mereka
+          </div>
+        )}
+
+        {/* Progressive hints */}
+        <div className="text-[12px] font-semibold mb-2">Petunjuk bertahap</div>
+        <div className="text-[11.5px] text-text-dim mb-2.5">
+          Siswa membuka hint satu per satu. Hint berikutnya terkunci sampai
+          sebelumnya ditandai.
+        </div>
+
+        <div className="flex flex-col gap-2 mb-3.5">
+          {hints.map((h, i) => {
+            const locked = i > 0 && !hints[i - 1].revealed;
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "flex gap-2.5 p-3 border border-line text-[12.5px]",
+                  locked ? "opacity-40 bg-paper-dim" : "bg-white"
+                )}
+              >
+                <span className="w-6 h-6 rounded-full bg-pcb text-white text-[11px] font-bold flex items-center justify-center flex-none">
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="leading-relaxed">{h.text}</div>
+                  {h.response && (
+                    <div className="mt-1.5 text-[12px] px-2 py-1 border border-line bg-paper-dim text-text-dim inline-block">
+                      {h.response === "paham"
+                        ? "✓ Siswa: Sudah paham"
+                        : "❓ Siswa: Butuh lagi"}
+                    </div>
+                  )}
+                  {!h.response && h.revealed && (
+                    <div className="mt-1.5 text-[11px] text-text-dim italic">
+                      Dibuka siswa — menunggu respon...
+                    </div>
+                  )}
+                  {!h.response && !h.revealed && !locked && (
+                    <div className="mt-1.5 text-[11px] text-text-dim">
+                      Belum dibuka
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add hint input */}
+        <div className="flex gap-2 items-end mb-4">
+          <div className="flex-1">
+            <label className="text-[12px] font-semibold block mb-1">
+              Tambah hint baru
+            </label>
+            <input
+              type="text"
+              placeholder="Tulis petunjuk untuk siswa..."
+              className="w-full border border-line bg-white px-3 py-2 text-[13px] text-text-primary"
+              value={hintDraft}
+              onChange={(e) => setHintDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addHint();
+              }}
+            />
+          </div>
+          <button
+            className="px-4 py-2 bg-pcb text-white text-[13px] font-medium whitespace-nowrap hover:opacity-90"
+            onClick={addHint}
+          >
+            Kirim hint
+          </button>
+        </div>
+
+        {/* Demo buttons */}
+        <div className="border-t border-line pt-3 text-[11.5px] text-text-dim flex gap-3 flex-wrap">
+          <button
+            className="px-2.5 py-1 border border-line bg-white text-text-primary text-[11px] hover:bg-paper-dim"
+            onClick={demoReveal}
+          >
+            Demo: siswa buka hint
+          </button>
+          <button
+            className="px-2.5 py-1 border border-line bg-white text-text-primary text-[11px] hover:bg-paper-dim"
+            onClick={demoRespond}
+          >
+            Demo: siswa respon
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RekapPage() {
   const [openDetail, setOpenDetail] = useState<number | null>(null);
+  const [hintPanel, setHintPanel] = useState<HintPanelState | null>(null);
 
   return (
     <div className="animate-fade-in">
@@ -231,27 +468,36 @@ export default function RekapPage() {
 
                         {/* Soal circles */}
                         <div className="flex gap-2.5 flex-wrap">
-                          {s.soalStatus.map((st, i) => (
-                            <div
-                              key={i}
-                              className={cn(
-                                "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px] relative",
-                                soalColors[st],
-                                st === "proses" && s.live && "cursor-pointer"
-                              )}
-                            >
-                              {st === "proses" && s.liveMin ? (
-                                <span className="text-[11px]">{s.liveMin}m</span>
-                              ) : (
-                                i + 1
-                              )}
-                              {st === "proses" && s.hand && (
-                                <span className="absolute -top-1.5 -right-1.5 text-[14px] animate-pulse-slow drop-shadow-sm">
-                                  &#9995;
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                          {s.soalStatus.map((st, i) => {
+                            const isClickable = st === "proses" && s.live;
+                            return (
+                              <div
+                                key={i}
+                                className={cn(
+                                  "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px] relative",
+                                  soalColors[st],
+                                  isClickable && "cursor-pointer hover:ring-2 hover:ring-amber/50"
+                                )}
+                                onClick={(e) => {
+                                  if (isClickable) {
+                                    e.stopPropagation();
+                                    setHintPanel({ studentName: s.name, soalNum: i + 1 });
+                                  }
+                                }}
+                              >
+                                {st === "proses" && s.liveMin ? (
+                                  <span className="text-[11px]">{s.liveMin}m</span>
+                                ) : (
+                                  i + 1
+                                )}
+                                {st === "proses" && s.hand && (
+                                  <span className="absolute -top-1.5 -right-1.5 text-[14px] animate-pulse-slow drop-shadow-sm">
+                                    &#9995;
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -285,6 +531,15 @@ export default function RekapPage() {
           )
         }
       </Tabs>
+
+      {/* Hint Panel Modal */}
+      {hintPanel && (
+        <HintPanel
+          studentName={hintPanel.studentName}
+          soalNum={hintPanel.soalNum}
+          onClose={() => setHintPanel(null)}
+        />
+      )}
     </div>
   );
 }
