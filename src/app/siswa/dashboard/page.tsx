@@ -41,19 +41,51 @@ const demoSoal: SoalItem[] = [
   { id: "6", title: "Analisis Mendalam: Flexbox vs Grid", difficulty: "Sulit", description: "Analisis berlapis dari memahami, menganalisis, mengevaluasi, hingga mencipta layout CSS.", learningModel: "DEEP_LEARNING", status: "available" },
 ];
 
+function HandRaiseButton({ raised, onToggle }: { raised: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      className={cn(
+        "inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 border-[1.5px] font-sans cursor-pointer transition-all",
+        raised
+          ? "border-amber bg-amber text-white animate-pulse-slow"
+          : "border-line bg-white text-text-dim hover:border-amber hover:text-amber hover:bg-amber-soft"
+      )}
+    >
+      &#9995; {raised ? "Tangan diangkat" : "Angkat tangan"}
+    </button>
+  );
+}
+
+function HandRaisedBanner({ onLower }: { onLower: () => void }) {
+  return (
+    <div className="bg-amber-soft border border-amber px-3.5 py-2 mt-2.5 flex items-center gap-2 text-[12.5px]">
+      <span className="text-[16px] animate-pulse-slow inline-block">&#9995;</span>
+      <span className="text-amber font-medium">Tangan diangkat — guru akan melihat permintaan bantuanmu.</span>
+      <button
+        onClick={onLower}
+        className="ml-auto bg-transparent border border-amber text-amber font-sans text-[11px] px-2.5 py-0.5 cursor-pointer whitespace-nowrap"
+      >
+        Turunkan
+      </button>
+    </div>
+  );
+}
+
 export default function LatihanPage() {
-  const [soalList, setSoalList] = useState(demoSoal);
+  const [soalList] = useState(demoSoal);
   const [activeEditor, setActiveEditor] = useState<string | null>(null);
+  const [handRaised, setHandRaised] = useState(false);
 
   function openEditor(id: string) {
     setActiveEditor(id);
+    setHandRaised(false);
   }
 
   function closeEditor() {
     setActiveEditor(null);
+    setHandRaised(false);
   }
-
-  const activeSoal = activeEditor ? soalList.find((s) => s.id === activeEditor) : null;
 
   return (
     <div className="animate-fade-in">
@@ -108,6 +140,11 @@ export default function LatihanPage() {
                 )}
               </div>
 
+              {/* Hand raised banner — shown for non-PS editors (PS has its own) */}
+              {activeEditor === soal.id && handRaised && soal.learningModel !== "PROBLEM_SOLVING" && (
+                <HandRaisedBanner onLower={() => setHandRaised(false)} />
+              )}
+
               {/* Inline editor for Problem Solving — CodeMirror 6 + live preview */}
               {activeEditor === soal.id && soal.learningModel === "PROBLEM_SOLVING" && (
                 <ProblemSolvingEditor
@@ -136,12 +173,15 @@ export default function LatihanPage() {
                 <div className="mt-4 border border-line bg-white">
                   <div className="flex justify-between items-center px-4 py-3.5 border-b border-line">
                     <strong className="text-[13.5px]">Proyek: {soal.title}</strong>
-                    <button
-                      onClick={closeEditor}
-                      className="bg-transparent border border-line text-text-primary px-3 py-1.5 text-[12px] font-sans cursor-pointer"
-                    >
-                      ← Daftar soal
-                    </button>
+                    <div className="flex gap-1.5 items-center">
+                      <HandRaiseButton raised={handRaised} onToggle={() => setHandRaised(!handRaised)} />
+                      <button
+                        onClick={closeEditor}
+                        className="bg-transparent border border-line text-text-primary px-3 py-1.5 text-[12px] font-sans cursor-pointer"
+                      >
+                        ← Daftar soal
+                      </button>
+                    </div>
                   </div>
                   <div className="flex px-4 py-4 gap-2">
                     <div className="flex-1 text-center">
@@ -191,11 +231,12 @@ export default function LatihanPage() {
                     placeholder="Tulis refleksimu di sini..."
                     defaultValue="Aplikasi yang sering saya pakai adalah aplikasi ojek online. Menurut saya bagian yang paling nyaman itu tombol pesan yang besar dan warnanya mencolok, jadi gampang ditemukan meski buru-buru..."
                   />
-                  <div className="flex justify-between items-center mt-3">
+                  <div className="flex justify-between items-center mt-3 flex-wrap gap-2">
                     <small className="text-text-dim text-[11.5px]">
                       Tidak ada skor otomatis — guru akan menilai dengan rubrik kualitatif.
                     </small>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
+                      <HandRaiseButton raised={handRaised} onToggle={() => setHandRaised(!handRaised)} />
                       <button
                         onClick={closeEditor}
                         className="bg-transparent border border-line text-text-primary px-3 py-1.5 text-[12px] font-sans cursor-pointer"
@@ -259,13 +300,16 @@ export default function LatihanPage() {
                       placeholder="Tulis analisismu di sini..."
                       defaultValue="justify-content mengatur posisi elemen sepanjang sumbu utama (main axis), sedangkan align-items mengatur posisi di sumbu silang (cross axis)..."
                     />
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center flex-wrap gap-2">
                       <small className="text-text-dim text-[11.5px]">
                         Dinilai per lapisan — skor lapisan lebih tinggi bernilai lebih besar.
                       </small>
-                      <button className="bg-[var(--ocean)] text-white border-none px-4 py-2 text-[12.5px] font-sans cursor-pointer">
-                        Kirim lapisan ini
-                      </button>
+                      <div className="flex gap-1.5 items-center">
+                        <HandRaiseButton raised={handRaised} onToggle={() => setHandRaised(!handRaised)} />
+                        <button className="bg-[var(--ocean)] text-white border-none px-4 py-2 text-[12.5px] font-sans cursor-pointer">
+                          Kirim lapisan ini
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
