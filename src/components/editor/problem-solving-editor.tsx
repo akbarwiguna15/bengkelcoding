@@ -59,8 +59,7 @@ export function ProblemSolvingEditor({
       model: "PROBLEM_SOLVING",
     });
     return () => {
-      record("attempt_close", { reason: "back" });
-      flushBuffer();
+      record("attempt_close", { reason: "back" }).then(() => flushBuffer());
       if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,6 +74,7 @@ export function ProblemSolvingEditor({
         lintTimerRef.current = setTimeout(() => {
           const errors: { line: number; message: string }[] = [];
           const lines = newCode.split("\n");
+          let braceDepth = 0;
           lines.forEach((line, i) => {
             const trimmed = line.trim();
             if (
@@ -92,15 +92,21 @@ export function ProblemSolvingEditor({
                 message: `Baris ${i + 1}: missing semicolon`,
               });
             }
-            const propMatch = trimmed.match(/^\s*([\w-]+)\s*:/);
-            if (propMatch) {
-              const prop = propMatch[1];
-              if (!CSS.supports(prop, "initial")) {
-                errors.push({
-                  line: i + 1,
-                  message: `Baris ${i + 1}: properti "${prop}" tidak dikenali`,
-                });
+            if (braceDepth > 0 && !trimmed.endsWith("{")) {
+              const propMatch = trimmed.match(/^\s*([\w-]+)\s*:/);
+              if (propMatch) {
+                const prop = propMatch[1];
+                if (!CSS.supports(prop, "initial")) {
+                  errors.push({
+                    line: i + 1,
+                    message: `Baris ${i + 1}: properti "${prop}" tidak dikenali`,
+                  });
+                }
               }
+            }
+            for (const ch of trimmed) {
+              if (ch === "{") braceDepth++;
+              else if (ch === "}") braceDepth = Math.max(0, braceDepth - 1);
             }
           });
           setLintErrors(errors);
@@ -206,7 +212,6 @@ export function ProblemSolvingEditor({
   }, [handRaised, record]);
 
   const handleClose = useCallback(() => {
-    flushBuffer();
     onClose();
   }, [onClose]);
 
@@ -286,7 +291,6 @@ export function ProblemSolvingEditor({
 
           <div className="flex-1 min-h-0">
             <CodeMirrorEditor
-              key={soalId}
               initialCode={starterCode}
               language={language}
               fileName={fileName}

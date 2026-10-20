@@ -24,7 +24,7 @@ export function useEventRecorder(
   ctxRef.current = { studentId, classId, taskId, attemptId };
 
   const record = useCallback(
-    (type: EventType, payload: Record<string, unknown> = {}) => {
+    (type: EventType, payload: Record<string, unknown> = {}): Promise<void> => {
       const c = ctxRef.current;
       const event: StudentEventRecord = {
         studentId: c.studentId,
@@ -36,7 +36,7 @@ export function useEventRecorder(
         clientTs: new Date().toISOString(),
         seq: seqRef.current++,
       };
-      bufferEvent(event);
+      return bufferEvent(event);
     },
     []
   );
