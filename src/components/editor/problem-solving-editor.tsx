@@ -183,6 +183,7 @@ export function ProblemSolvingEditor({
       message: string;
       signature: string;
       line: number | null;
+      repeated: boolean;
       seen: boolean;
     }) => {
       record("console_error", data);

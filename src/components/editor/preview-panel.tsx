@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 
 const RENDER_DEBOUNCE_MS = 400;
 
@@ -11,6 +11,7 @@ interface SelectorProbe {
 
 interface ProbeResult {
   kind: "probe";
+  trigger: "auto" | "manual";
   domHash: string;
   styleHash: string;
   computed: Record<string, string>;
@@ -45,6 +46,7 @@ interface PreviewPanelProps {
     message: string;
     signature: string;
     line: number | null;
+    repeated: boolean;
     seen: boolean;
   }) => void;
 }
@@ -81,14 +83,15 @@ function extractSelectors(css: string): string[] {
 
 function buildProbeScript(
   relevantProps: string[],
-  selectors: string[]
+  selectors: string[],
+  trigger: "auto" | "manual"
 ): string {
   return `
 <script>
 (function(){
+  var TRIGGER=${JSON.stringify(trigger)};
   var H=function(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return h.toString(36);};
 
-  // error capture
   var origErr=console.error;
   console.error=function(){
     var m=[].slice.call(arguments).map(String).join(" ");
@@ -99,17 +102,20 @@ function buildProbeScript(
     window.parent.postMessage({kind:"error",message:e.message||String(e),line:e.lineno||null},"*");
   });
 
-  // wait for layout
   setTimeout(function(){
     try{
       var body=document.body;
       if(!body)return;
-      var domHash=H(body.innerHTML);
 
-      // computed styles keyed by position index
+      // exclude probe <script> from innerHTML, querySelectorAll, and selector probes
+      var scripts=body.querySelectorAll("script");
+      for(var x=0;x<scripts.length;x++) scripts[x].setAttribute("data-probe","1");
+      var cleanHTML=body.innerHTML.replace(/<script[^>]*data-probe="1"[\\s\\S]*?<\\/script>/gi,"");
+      var domHash=H(cleanHTML);
+
       var props=${JSON.stringify(relevantProps)};
       var computed={};
-      var els=body.querySelectorAll("*");
+      var els=body.querySelectorAll("*:not(script[data-probe])");
       for(var i=0;i<els.length;i++){
         var cs=window.getComputedStyle(els[i]);
         for(var j=0;j<props.length;j++){
@@ -123,16 +129,19 @@ function buildProbeScript(
       for(var k=0;k<keys.length;k++){entries.push(keys[k]+":"+computed[keys[k]]);}
       var styleHash=H(entries.join("|"));
 
-      // selector probes
       var sels=${JSON.stringify(selectors)};
       var probes=[];
       for(var s=0;s<sels.length;s++){
-        try{probes.push({sel:sels[s],matchCount:body.querySelectorAll(sels[s]).length});}
-        catch(e){probes.push({sel:sels[s],matchCount:0});}
+        try{probes.push({sel:sels[s],matchCount:body.querySelectorAll(sels[s]+":not(script[data-probe])").length});}
+        catch(e){
+          try{probes.push({sel:sels[s],matchCount:body.querySelectorAll(sels[s]).length});}
+          catch(e2){probes.push({sel:sels[s],matchCount:0});}
+        }
       }
 
       window.parent.postMessage({
         kind:"probe",
+        trigger:TRIGGER,
         domHash:domHash,
         styleHash:styleHash,
         computed:computed,
@@ -146,10 +155,12 @@ function buildProbeScript(
 <\/script>`;
 }
 
+const EMPTY_PROPS: string[] = [];
+
 export function PreviewPanel({
   htmlCode,
   cssCode,
-  relevantProps = [],
+  relevantProps = EMPTY_PROPS,
   trigger = "auto",
   onRender,
   onSelectorProbe,
@@ -160,11 +171,8 @@ export function PreviewPanel({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevStyleHashRef = useRef<string>("");
   const prevComputedRef = useRef<Record<string, string>>({});
-  const triggerRef = useRef<"auto" | "manual">(trigger);
   const [hasError, setHasError] = useState(false);
   const seenErrorsRef = useRef<Set<string>>(new Set());
-
-  triggerRef.current = trigger;
 
   const onRenderRef = useRef(onRender);
   const onSelectorProbeRef = useRef(onSelectorProbe);
@@ -175,21 +183,31 @@ export function PreviewPanel({
   onVisualDiffRef.current = onVisualDiff;
   onConsoleErrorRef.current = onConsoleError;
 
+  const stableProps = useMemo(
+    () => relevantProps,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [relevantProps.join(",")]
+  );
+
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+
       const data = e.data as ProbeMessage;
       if (!data || typeof data !== "object" || !("kind" in data)) return;
 
       if (data.kind === "error") {
         setHasError(true);
         const sig = errorSignature(data.message);
-        const seen = seenErrorsRef.current.has(sig);
+        const repeated = seenErrorsRef.current.has(sig);
         seenErrorsRef.current.add(sig);
         onConsoleErrorRef.current?.({
           message: data.message,
           signature: sig,
           line: data.line,
-          seen,
+          repeated,
+          // TODO: track actual panel-open state once error panel UI exists
+          seen: false,
         });
         return;
       }
@@ -198,7 +216,7 @@ export function PreviewPanel({
         const changedFromPrev = data.styleHash !== prevStyleHashRef.current;
 
         onRenderRef.current?.({
-          trigger: triggerRef.current,
+          trigger: data.trigger,
           domHash: data.domHash,
           styleHash: data.styleHash,
           changedFromPrev,
@@ -238,23 +256,25 @@ export function PreviewPanel({
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  const buildSrcdoc = useCallback(() => {
-    const selectors = extractSelectors(cssCode);
-    const probe = buildProbeScript(relevantProps, selectors);
-    return `<!DOCTYPE html>
+  const buildSrcdoc = useCallback(
+    (trig: "auto" | "manual") => {
+      const selectors = extractSelectors(cssCode);
+      const probe = buildProbeScript(stableProps, selectors, trig);
+      return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>${cssCode}</style></head>
 <body>${htmlCode}${probe}</body>
 </html>`;
-  }, [htmlCode, cssCode, relevantProps]);
+    },
+    [htmlCode, cssCode, stableProps]
+  );
 
   const updatePreview = useCallback(
     (trig: "auto" | "manual") => {
       const iframe = iframeRef.current;
       if (!iframe) return;
-      triggerRef.current = trig;
       setHasError(false);
-      iframe.srcdoc = buildSrcdoc();
+      iframe.srcdoc = buildSrcdoc(trig);
     },
     [buildSrcdoc]
   );
