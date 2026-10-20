@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef } from "react";
 import { bufferEvent, startAutoFlush, stopAutoFlush } from "@/lib/event-buffer";
 import type { EventType, StudentEventRecord } from "@/types/events";
 
-const IDLE_THRESHOLD_MS = 45_000;
+const IDLE_THRESHOLD_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const MOUSEMOVE_THROTTLE_MS = 1_000;
 
 export function useEventRecorder(
   studentId: string,
@@ -19,6 +20,7 @@ export function useEventRecorder(
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeTimeRef = useRef(0);
   const lastActivityRef = useRef(Date.now());
+  const lastMoveRef = useRef(0);
 
   const ctxRef = useRef({ studentId, classId, taskId, attemptId });
   ctxRef.current = { studentId, classId, taskId, attemptId };
@@ -61,26 +63,41 @@ export function useEventRecorder(
     startAutoFlush();
 
     heartbeatRef.current = setInterval(() => {
-      const now = Date.now();
-      const elapsed = now - lastActivityRef.current;
-      activeTimeRef.current += Math.min(elapsed, HEARTBEAT_INTERVAL_MS);
+      if (idleStartRef.current !== null) return;
+      activeTimeRef.current += HEARTBEAT_INTERVAL_MS;
       record("session_heartbeat", { activeMs: activeTimeRef.current });
     }, HEARTBEAT_INTERVAL_MS);
 
     const onActivity = () => resetIdleTimer();
+    const onMouseMove = () => {
+      const now = Date.now();
+      if (now - lastMoveRef.current > MOUSEMOVE_THROTTLE_MS) {
+        lastMoveRef.current = now;
+        resetIdleTimer();
+      }
+    };
     window.addEventListener("keydown", onActivity);
     window.addEventListener("mousedown", onActivity);
     window.addEventListener("click", onActivity);
+    window.addEventListener("scroll", onActivity, true);
+    window.addEventListener("mousemove", onMouseMove);
 
     resetIdleTimer();
 
     return () => {
+      if (idleStartRef.current !== null) {
+        const duration = Date.now() - idleStartRef.current;
+        record("idle_end", { durationMs: duration });
+        idleStartRef.current = null;
+      }
       stopAutoFlush();
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       window.removeEventListener("keydown", onActivity);
       window.removeEventListener("mousedown", onActivity);
       window.removeEventListener("click", onActivity);
+      window.removeEventListener("scroll", onActivity, true);
+      window.removeEventListener("mousemove", onMouseMove);
     };
   }, [record, resetIdleTimer]);
 
