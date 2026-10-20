@@ -37,9 +37,9 @@ export function ProblemSolvingEditor({
   classId,
   onClose,
 }: ProblemSolvingEditorProps) {
-  const attemptId = useRef(
-    `${soalId}_${studentId}_${Date.now().toString(36)}`
-  ).current;
+  const [attemptId] = useState(
+    () => `${soalId}_${studentId}_${Date.now().toString(36)}`
+  );
 
   const [code, setCode] = useState(starterCode);
   const [lintErrors, setLintErrors] = useState<
@@ -286,6 +286,7 @@ export function ProblemSolvingEditor({
 
           <div className="flex-1 min-h-0">
             <CodeMirrorEditor
+              key={soalId}
               initialCode={starterCode}
               language={language}
               fileName={fileName}
