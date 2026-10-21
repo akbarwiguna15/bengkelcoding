@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { CodeMirrorEditor } from "./codemirror-editor";
 import { PreviewPanel } from "./preview-panel";
 import { useEventRecorder } from "@/hooks/use-event-recorder";
+import { flushBuffer } from "@/lib/event-buffer";
 
 import { cssLanguage } from "@codemirror/lang-css";
 import { Text } from "@codemirror/state";
@@ -57,42 +58,6 @@ export function ProblemSolvingEditor({
   const lastLintSigRef = useRef("");
   const closeSentRef = useRef(false);
 
-  const closePayload = useCallback(
-    () => ({
-      events: [{
-        studentId,
-        classId,
-        taskId: soalId,
-        attemptId,
-        type: "attempt_close",
-        payload: { reason: "back" },
-        clientTs: new Date().toISOString(),
-        seq: -1,
-      }],
-    }),
-    [studentId, classId, soalId, attemptId]
-  );
-
-  const sendCloseFetch = useCallback(() => {
-    if (closeSentRef.current) return;
-    closeSentRef.current = true;
-    fetch("/api/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(closePayload()),
-      keepalive: true,
-    }).catch(() => {});
-  }, [closePayload]);
-
-  const sendCloseBeacon = useCallback(() => {
-    if (closeSentRef.current) return;
-    closeSentRef.current = true;
-    navigator.sendBeacon?.(
-      "/api/events",
-      new Blob([JSON.stringify(closePayload())], { type: "application/json" })
-    );
-  }, [closePayload]);
-
   useEffect(() => {
     record("attempt_open", {
       regime,
@@ -100,7 +65,10 @@ export function ProblemSolvingEditor({
       model: "PROBLEM_SOLVING",
     });
     return () => {
-      sendCloseBeacon();
+      if (!closeSentRef.current) {
+        closeSentRef.current = true;
+        record("attempt_close", { reason: "unmount" });
+      }
       if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,10 +226,14 @@ export function ProblemSolvingEditor({
     }
   }, [handRaised, record]);
 
-  const handleClose = useCallback(() => {
-    sendCloseFetch();
+  const handleClose = useCallback(async () => {
+    if (!closeSentRef.current) {
+      closeSentRef.current = true;
+      await record("attempt_close", { reason: "back" });
+      await flushBuffer();
+    }
     onClose();
-  }, [onClose, sendCloseFetch]);
+  }, [onClose, record]);
 
   const stableRelevantProps = useMemo(
     () => relevantProps,
