@@ -26,7 +26,11 @@ export async function GET(
                   name: true,
                   activities: {
                     where: { kelasId },
+                    orderBy: { lastEventAt: "desc" },
                     take: 1,
+                    include: {
+                      soal: { select: { learningModel: true } },
+                    },
                   },
                 },
               },
@@ -35,11 +39,14 @@ export async function GET(
 
           const data = members.map((m) => {
             const activity = m.user.activities[0];
-            const stuckMinutes = activity?.stuckSince
-              ? Math.floor(
-                  (Date.now() - new Date(activity.stuckSince).getTime()) / 60000
-                )
-              : undefined;
+            const learningModel = activity?.soal?.learningModel;
+            const stuckMinutes =
+              activity?.stuckSince && learningModel === "PROBLEM_SOLVING"
+                ? Math.floor(
+                    (Date.now() - new Date(activity.stuckSince).getTime()) /
+                      60000
+                  )
+                : undefined;
 
             return {
               userId: m.user.id,
@@ -48,6 +55,7 @@ export async function GET(
               status: activity?.status || "IDLE",
               lastEventAt: activity?.lastEventAt?.toISOString() || "",
               stuckMinutes,
+              learningModel,
             };
           });
 
