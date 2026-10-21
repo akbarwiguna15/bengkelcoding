@@ -22,6 +22,7 @@ interface EditAggregation {
 }
 
 function extractCSSProps(text: string): string[] {
+  if (text.includes("{")) return [];
   const propRe = /^\s*([\w-]+)\s*:/gm;
   const props: string[] = [];
   let m: RegExpExecArray | null;
@@ -106,12 +107,22 @@ export function CodeMirrorEditor({
   });
   const aggTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const snapTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSnapHashRef = useRef("");
+
+  const onChangeRef = useRef(onChange);
+  const onEditRef = useRef(onEdit);
+  const onSnapshotRef = useRef(onSnapshot);
+  const onPasteLargeRef = useRef(onPasteLarge);
+  onChangeRef.current = onChange;
+  onEditRef.current = onEdit;
+  onSnapshotRef.current = onSnapshot;
+  onPasteLargeRef.current = onPasteLarge;
 
   const flushAgg = useCallback(() => {
     const agg = aggRef.current;
     if (agg.charsAdded === 0 && agg.charsRemoved === 0) return;
 
-    onEdit?.({
+    onEditRef.current?.({
       charsAdded: agg.charsAdded,
       charsRemoved: agg.charsRemoved,
       linesTouched: Array.from(agg.linesTouched),
@@ -125,15 +136,17 @@ export function CodeMirrorEditor({
       linesTouched: new Set(),
       propsTouched: new Set(),
     };
-  }, [onEdit, fileName]);
+  }, [fileName]);
 
   const takeSnapshot = useCallback(() => {
     const view = viewRef.current;
     if (!view) return;
     const content = view.state.doc.toString();
     const hash = simpleHash(content);
-    onSnapshot?.({ file: fileName, content, hash });
-  }, [onSnapshot, fileName]);
+    if (hash === lastSnapHashRef.current) return;
+    lastSnapHashRef.current = hash;
+    onSnapshotRef.current?.({ file: fileName, content, hash });
+  }, [fileName]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -160,17 +173,20 @@ export function CodeMirrorEditor({
           if (!update.docChanged) return;
 
           const doc = update.state.doc.toString();
-          onChange?.(doc);
+          onChangeRef.current?.(doc);
 
-          update.changes.iterChanges((fromA, toA, fromB, _toB, inserted) => {
+          update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
             const removed = toA - fromA;
             const added = inserted.length;
 
             aggRef.current.charsAdded += added;
             aggRef.current.charsRemoved += removed;
 
-            const line = update.state.doc.lineAt(fromB).number;
-            aggRef.current.linesTouched.add(line);
+            const lineFrom = update.state.doc.lineAt(fromB).number;
+            const lineTo = update.state.doc.lineAt(Math.max(fromB, toB - 1)).number;
+            for (let l = lineFrom; l <= lineTo; l++) {
+              aggRef.current.linesTouched.add(l);
+            }
 
             if (language === "css") {
               const lineText = update.state.doc.lineAt(fromB).text;
@@ -179,8 +195,8 @@ export function CodeMirrorEditor({
               }
             }
 
-            if (added > PASTE_LARGE_THRESHOLD && removed === 0) {
-              onPasteLarge?.({ chars: added, file: fileName });
+            if (added - removed > PASTE_LARGE_THRESHOLD) {
+              onPasteLargeRef.current?.({ chars: added, file: fileName });
             }
           });
         }),

@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { CodeMirrorEditor } from "./codemirror-editor";
 import { PreviewPanel } from "./preview-panel";
 import { useEventRecorder } from "@/hooks/use-event-recorder";
 import { flushBuffer } from "@/lib/event-buffer";
+
+import { cssLanguage } from "@codemirror/lang-css";
+import { Text } from "@codemirror/state";
+
+const cssParser = cssLanguage.parser;
 
 interface ProblemSolvingEditorProps {
   soalId: string;
@@ -37,9 +42,9 @@ export function ProblemSolvingEditor({
   classId,
   onClose,
 }: ProblemSolvingEditorProps) {
-  const attemptId = useRef(
-    `${soalId}_${studentId}_${Date.now().toString(36)}`
-  ).current;
+  const [attemptId] = useState(
+    () => `${soalId}_${studentId}_${Date.now().toString(36)}`
+  );
 
   const [code, setCode] = useState(starterCode);
   const [lintErrors, setLintErrors] = useState<
@@ -51,6 +56,7 @@ export function ProblemSolvingEditor({
 
   const lintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLintSigRef = useRef("");
+  const closeSentRef = useRef(false);
 
   useEffect(() => {
     record("attempt_open", {
@@ -58,9 +64,35 @@ export function ProblemSolvingEditor({
       difficulty: "unknown",
       model: "PROBLEM_SOLVING",
     });
+
+    const onPageHide = () => {
+      if (closeSentRef.current) return;
+      closeSentRef.current = true;
+      const payload = {
+        events: [{
+          studentId,
+          classId,
+          taskId: soalId,
+          attemptId,
+          type: "attempt_close",
+          payload: { reason: "pagehide" },
+          clientTs: new Date().toISOString(),
+          seq: -1,
+        }],
+      };
+      navigator.sendBeacon?.(
+        "/api/events",
+        new Blob([JSON.stringify(payload)], { type: "application/json" })
+      );
+    };
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
-      record("attempt_close", { reason: "back" });
-      flushBuffer();
+      window.removeEventListener("pagehide", onPageHide);
+      if (!closeSentRef.current) {
+        closeSentRef.current = true;
+        record("attempt_close", { reason: "unmount" });
+      }
       if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,34 +106,46 @@ export function ProblemSolvingEditor({
         if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
         lintTimerRef.current = setTimeout(() => {
           const errors: { line: number; message: string }[] = [];
-          const lines = newCode.split("\n");
-          lines.forEach((line, i) => {
-            const trimmed = line.trim();
-            if (
-              trimmed &&
-              !trimmed.startsWith("/*") &&
-              !trimmed.startsWith("*") &&
-              !trimmed.startsWith("//") &&
-              !trimmed.endsWith("{") &&
-              !trimmed.endsWith("}") &&
-              !trimmed.endsWith(";") &&
-              trimmed.includes(":")
-            ) {
-              errors.push({
-                line: i + 1,
-                message: `Baris ${i + 1}: missing semicolon`,
-              });
-            }
-            const propMatch = trimmed.match(/^\s*([\w-]+)\s*:/);
-            if (propMatch) {
-              const prop = propMatch[1];
-              if (!CSS.supports(prop, "initial")) {
-                errors.push({
-                  line: i + 1,
-                  message: `Baris ${i + 1}: properti "${prop}" tidak dikenali`,
-                });
+          const tree = cssParser.parse(newCode);
+          const doc = Text.of(newCode.split("\n"));
+          const errorLines = new Set<number>();
+
+          tree.iterate({
+            enter(node) {
+              if (
+                node.name === "PropertyName" &&
+                node.node.parent?.name === "Declaration"
+              ) {
+                const prop = newCode.slice(node.from, node.to);
+                if (!CSS.supports(prop, "initial")) {
+                  const line = doc.lineAt(node.from).number;
+                  errors.push({
+                    line,
+                    message: `Baris ${line}: properti "${prop}" tidak dikenali`,
+                  });
+                }
               }
-            }
+              if (node.name === "⚠") {
+                const pos = Math.min(node.from, doc.length - 1);
+                const line = doc.lineAt(pos).number;
+                if (errorLines.has(line)) return;
+                const trimmed = doc.line(line).text.trim();
+                if (!trimmed || trimmed === "{" || trimmed === "}") return;
+                errorLines.add(line);
+                const parent = node.node.parent;
+                if (parent?.name === "ImportStatement") {
+                  errors.push({
+                    line,
+                    message: `Baris ${line}: blok CSS tidak lengkap`,
+                  });
+                } else {
+                  errors.push({
+                    line,
+                    message: `Baris ${line}: missing semicolon`,
+                  });
+                }
+              }
+            },
           });
           setLintErrors(errors);
           if (errors.length > 0) {
@@ -159,6 +203,7 @@ export function ProblemSolvingEditor({
       styleHash: string;
       changedFromPrev: boolean;
     }) => {
+      if (!data.changedFromPrev && data.trigger === "auto") return;
       record("preview_render", data);
     },
     [record]
@@ -183,6 +228,7 @@ export function ProblemSolvingEditor({
       message: string;
       signature: string;
       line: number | null;
+      repeated: boolean;
       seen: boolean;
     }) => {
       record("console_error", data);
@@ -204,10 +250,20 @@ export function ProblemSolvingEditor({
     }
   }, [handRaised, record]);
 
-  const handleClose = useCallback(() => {
-    flushBuffer();
+  const handleClose = useCallback(async () => {
+    if (!closeSentRef.current) {
+      closeSentRef.current = true;
+      await record("attempt_close", { reason: "back" });
+      await flushBuffer();
+    }
     onClose();
-  }, [onClose]);
+  }, [onClose, record]);
+
+  const stableRelevantProps = useMemo(
+    () => relevantProps,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [relevantProps.join(",")]
+  );
 
   const isSilent = regime === "silent";
 
@@ -319,7 +375,7 @@ export function ProblemSolvingEditor({
             <PreviewPanel
               htmlCode={starterHtml}
               cssCode={code}
-              relevantProps={relevantProps}
+              relevantProps={stableRelevantProps}
               onRender={handlePreviewRender}
               onSelectorProbe={handleSelectorProbe}
               onVisualDiff={handleVisualDiff}
