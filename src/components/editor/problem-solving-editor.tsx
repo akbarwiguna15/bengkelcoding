@@ -5,6 +5,9 @@ import { CodeMirrorEditor } from "./codemirror-editor";
 import { PreviewPanel } from "./preview-panel";
 import { useEventRecorder } from "@/hooks/use-event-recorder";
 import { flushBuffer } from "@/lib/event-buffer";
+import { cssLanguage } from "@codemirror/lang-css";
+
+const cssParser = cssLanguage.parser;
 
 interface ProblemSolvingEditorProps {
   soalId: string;
@@ -73,41 +76,43 @@ export function ProblemSolvingEditor({
         if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
         lintTimerRef.current = setTimeout(() => {
           const errors: { line: number; message: string }[] = [];
-          const lines = newCode.split("\n");
-          let braceDepth = 0;
-          lines.forEach((line, i) => {
-            const trimmed = line.trim();
-            if (
-              trimmed &&
-              !trimmed.startsWith("/*") &&
-              !trimmed.startsWith("*") &&
-              !trimmed.startsWith("//") &&
-              !trimmed.endsWith("{") &&
-              !trimmed.endsWith("}") &&
-              !trimmed.endsWith(";") &&
-              trimmed.includes(":")
-            ) {
-              errors.push({
-                line: i + 1,
-                message: `Baris ${i + 1}: missing semicolon`,
-              });
+          const tree = cssParser.parse(newCode);
+          const errorLines = new Set<number>();
+
+          const lineOf = (pos: number) => {
+            let n = 1;
+            for (let i = 0; i < pos; i++) {
+              if (newCode.charCodeAt(i) === 10) n++;
             }
-            if (braceDepth > 0 && !trimmed.endsWith("{")) {
-              const propMatch = trimmed.match(/^\s*([\w-]+)\s*:/);
-              if (propMatch) {
-                const prop = propMatch[1];
+            return n;
+          };
+
+          tree.iterate({
+            enter(node) {
+              if (
+                node.name === "PropertyName" &&
+                node.node.parent?.name === "Declaration"
+              ) {
+                const prop = newCode.slice(node.from, node.to);
                 if (!CSS.supports(prop, "initial")) {
+                  const line = lineOf(node.from);
                   errors.push({
-                    line: i + 1,
-                    message: `Baris ${i + 1}: properti "${prop}" tidak dikenali`,
+                    line,
+                    message: `Baris ${line}: properti "${prop}" tidak dikenali`,
                   });
                 }
               }
-            }
-            for (const ch of trimmed) {
-              if (ch === "{") braceDepth++;
-              else if (ch === "}") braceDepth = Math.max(0, braceDepth - 1);
-            }
+              if (node.name === "⚠") {
+                const line = lineOf(node.from);
+                if (!errorLines.has(line)) {
+                  errorLines.add(line);
+                  errors.push({
+                    line,
+                    message: `Baris ${line}: missing semicolon`,
+                  });
+                }
+              }
+            },
           });
           setLintErrors(errors);
           if (errors.length > 0) {
