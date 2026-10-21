@@ -64,7 +64,31 @@ export function ProblemSolvingEditor({
       difficulty: "unknown",
       model: "PROBLEM_SOLVING",
     });
+
+    const onPageHide = () => {
+      if (closeSentRef.current) return;
+      closeSentRef.current = true;
+      const payload = {
+        events: [{
+          studentId,
+          classId,
+          taskId: soalId,
+          attemptId,
+          type: "attempt_close",
+          payload: { reason: "pagehide" },
+          clientTs: new Date().toISOString(),
+          seq: -1,
+        }],
+      };
+      navigator.sendBeacon?.(
+        "/api/events",
+        new Blob([JSON.stringify(payload)], { type: "application/json" })
+      );
+    };
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
+      window.removeEventListener("pagehide", onPageHide);
       if (!closeSentRef.current) {
         closeSentRef.current = true;
         record("attempt_close", { reason: "unmount" });
