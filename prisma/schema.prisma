@@ -120,6 +120,7 @@ model Soal {
   conceptTags    ConceptTag[]
   assignments    SoalAssignment[]
   submissions    Submission[]
+  activities     StudentActivity[]
 
   @@index([learningModel, status])
   @@map("soal")
@@ -269,15 +270,16 @@ model ErrorLog {
 model StudentActivity {
   id          String                @id @default(cuid())
   userId      String                @map("user_id")
-  soalId      String?               @map("soal_id")
-  kelasId     String?               @map("kelas_id")
+  soalId      String                @map("soal_id")
+  kelasId     String                @map("kelas_id")
   status      StudentActivityStatus @default(IDLE)
   lastEventAt DateTime              @default(now()) @map("last_event_at")
   stuckSince  DateTime?             @map("stuck_since")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soal Soal @relation(fields: [soalId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, kelasId])
+  @@unique([userId, kelasId, soalId])
   @@map("student_activities")
 }
 

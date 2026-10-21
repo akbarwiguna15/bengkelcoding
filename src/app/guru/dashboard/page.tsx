@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
+type SoalModel = "PROBLEM_SOLVING" | "PBL" | "TRANSFORMATIF" | "DEEP_LEARNING";
+
 interface PriorityData {
   fail: number;
   repeat: number;
@@ -26,6 +28,12 @@ interface StudentRow {
   liveMin?: number;
   offlineNote?: string;
 }
+
+const soalModels: SoalModel[] = [
+  "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PBL",
+  "PROBLEM_SOLVING", "PBL", "PROBLEM_SOLVING", "TRANSFORMATIF",
+  "PROBLEM_SOLVING", "DEEP_LEARNING",
+];
 
 interface HintItem {
   text: string;
@@ -338,7 +346,7 @@ export default function RekapPage() {
     <div className="animate-fade-in">
       <h1 className="text-[20px] font-semibold mb-1">Rekap nilai siswa</h1>
       <p className="text-[13.5px] text-text-dim mb-6">
-        Kelas XI RPL 2 — Materi: HTML dan CSS
+        Kelas X RPL 2 — Materi: HTML dan CSS
       </p>
 
       <Tabs
@@ -355,7 +363,7 @@ export default function RekapPage() {
                 <span>Nama</span>
                 <span>Soal</span>
                 <span>Rata-rata</span>
-                <span>Waktu</span>
+                <span>Sisa waktu</span>
                 <span>Status</span>
               </div>
 
@@ -372,17 +380,17 @@ export default function RekapPage() {
                       className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
                       onClick={() => setOpenDetail(isOpen ? null : s.id)}
                     >
-                      {/* Name + priority badge */}
+                      {/* Name + summary badge */}
                       <span className="flex items-center gap-1.5">
                         {s.name}
                         {s.hand && pt && (
                           <span
                             className={cn(
-                              "inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 border animate-pulse-slow whitespace-nowrap",
+                              "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
                               pt.bg, pt.color
                             )}
                           >
-                            &#9995; {pt.label}
+                            &#9995;
                           </span>
                         )}
                         <span className={cn(
@@ -470,29 +478,49 @@ export default function RekapPage() {
                         <div className="flex gap-2.5 flex-wrap">
                           {s.soalStatus.map((st, i) => {
                             const isClickable = st === "proses" && s.live;
+                            const isActive = st === "proses";
+                            const model = soalModels[i];
+                            const showHandBadge = isActive && s.hand;
+                            const showPrioBadge = isActive && s.hand && pt;
                             return (
-                              <div
-                                key={i}
-                                className={cn(
-                                  "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px] relative",
-                                  soalColors[st],
-                                  isClickable && "cursor-pointer hover:ring-2 hover:ring-amber/50"
+                              <div key={i} className="flex flex-col items-center gap-1">
+                                <div
+                                  className={cn(
+                                    "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px] relative",
+                                    soalColors[st],
+                                    isClickable && "cursor-pointer hover:ring-2 hover:ring-amber/50"
+                                  )}
+                                  onClick={(e) => {
+                                    if (isClickable) {
+                                      e.stopPropagation();
+                                      setHintPanel({ studentName: s.name, soalNum: i + 1 });
+                                    }
+                                  }}
+                                >
+                                  {isActive && s.liveMin ? (
+                                    <span className="text-[11px]">{s.liveMin}m</span>
+                                  ) : (
+                                    i + 1
+                                  )}
+                                  {showHandBadge && (
+                                    <span className="absolute -top-1.5 -right-1.5 text-[14px] animate-pulse-slow drop-shadow-sm">
+                                      &#9995;
+                                    </span>
+                                  )}
+                                </div>
+                                {showPrioBadge && pt && (
+                                  <span
+                                    className={cn(
+                                      "text-[9px] font-semibold px-1.5 py-px border whitespace-nowrap",
+                                      pt.bg, pt.color
+                                    )}
+                                  >
+                                    {pt.label}
+                                  </span>
                                 )}
-                                onClick={(e) => {
-                                  if (isClickable) {
-                                    e.stopPropagation();
-                                    setHintPanel({ studentName: s.name, soalNum: i + 1 });
-                                  }
-                                }}
-                              >
-                                {st === "proses" && s.liveMin ? (
-                                  <span className="text-[11px]">{s.liveMin}m</span>
-                                ) : (
-                                  i + 1
-                                )}
-                                {st === "proses" && s.hand && (
-                                  <span className="absolute -top-1.5 -right-1.5 text-[14px] animate-pulse-slow drop-shadow-sm">
-                                    &#9995;
+                                {model !== "PROBLEM_SOLVING" && isActive && (
+                                  <span className="text-[9px] text-text-dim font-mono">
+                                    {model === "PBL" ? "PBL" : model === "TRANSFORMATIF" ? "TRF" : "DL"}
                                   </span>
                                 )}
                               </div>
