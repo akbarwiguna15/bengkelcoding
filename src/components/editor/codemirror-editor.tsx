@@ -22,6 +22,7 @@ interface EditAggregation {
 }
 
 function extractCSSProps(text: string): string[] {
+  if (text.includes("{")) return [];
   const propRe = /^\s*([\w-]+)\s*:/gm;
   const props: string[] = [];
   let m: RegExpExecArray | null;
@@ -106,6 +107,7 @@ export function CodeMirrorEditor({
   });
   const aggTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const snapTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSnapHashRef = useRef("");
 
   const onChangeRef = useRef(onChange);
   const onEditRef = useRef(onEdit);
@@ -141,6 +143,8 @@ export function CodeMirrorEditor({
     if (!view) return;
     const content = view.state.doc.toString();
     const hash = simpleHash(content);
+    if (hash === lastSnapHashRef.current) return;
+    lastSnapHashRef.current = hash;
     onSnapshotRef.current?.({ file: fileName, content, hash });
   }, [fileName]);
 

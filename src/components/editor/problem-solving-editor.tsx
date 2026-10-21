@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { CodeMirrorEditor } from "./codemirror-editor";
 import { PreviewPanel } from "./preview-panel";
 import { useEventRecorder } from "@/hooks/use-event-recorder";
@@ -63,7 +63,26 @@ export function ProblemSolvingEditor({
       model: "PROBLEM_SOLVING",
     });
     return () => {
-      record("attempt_close", { reason: "back" }).then(() => flushBuffer());
+      const closeEvent = {
+        studentId,
+        classId,
+        taskId: soalId,
+        attemptId,
+        type: "attempt_close" as const,
+        payload: { reason: "back" },
+        clientTs: new Date().toISOString(),
+        seq: -1,
+      };
+      const sent = navigator.sendBeacon?.(
+        "/api/events",
+        new Blob(
+          [JSON.stringify({ events: [closeEvent] })],
+          { type: "application/json" }
+        )
+      );
+      if (!sent) {
+        record("attempt_close", { reason: "back" }).then(() => flushBuffer());
+      }
       if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,6 +193,7 @@ export function ProblemSolvingEditor({
       styleHash: string;
       changedFromPrev: boolean;
     }) => {
+      if (!data.changedFromPrev && data.trigger === "auto") return;
       record("preview_render", data);
     },
     [record]
@@ -223,6 +243,12 @@ export function ProblemSolvingEditor({
   const handleClose = useCallback(() => {
     onClose();
   }, [onClose]);
+
+  const stableRelevantProps = useMemo(
+    () => relevantProps,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [relevantProps.join(",")]
+  );
 
   const isSilent = regime === "silent";
 
@@ -334,7 +360,7 @@ export function ProblemSolvingEditor({
             <PreviewPanel
               htmlCode={starterHtml}
               cssCode={code}
-              relevantProps={relevantProps}
+              relevantProps={stableRelevantProps}
               onRender={handlePreviewRender}
               onSelectorProbe={handleSelectorProbe}
               onVisualDiff={handleVisualDiff}
