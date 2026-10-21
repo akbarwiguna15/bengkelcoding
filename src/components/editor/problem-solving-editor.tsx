@@ -6,6 +6,7 @@ import { PreviewPanel } from "./preview-panel";
 import { useEventRecorder } from "@/hooks/use-event-recorder";
 import { flushBuffer } from "@/lib/event-buffer";
 import { cssLanguage } from "@codemirror/lang-css";
+import { Text } from "@codemirror/state";
 
 const cssParser = cssLanguage.parser;
 
@@ -77,15 +78,8 @@ export function ProblemSolvingEditor({
         lintTimerRef.current = setTimeout(() => {
           const errors: { line: number; message: string }[] = [];
           const tree = cssParser.parse(newCode);
+          const doc = Text.of(newCode.split("\n"));
           const errorLines = new Set<number>();
-
-          const lineOf = (pos: number) => {
-            let n = 1;
-            for (let i = 0; i < pos; i++) {
-              if (newCode.charCodeAt(i) === 10) n++;
-            }
-            return n;
-          };
 
           tree.iterate({
             enter(node) {
@@ -95,7 +89,7 @@ export function ProblemSolvingEditor({
               ) {
                 const prop = newCode.slice(node.from, node.to);
                 if (!CSS.supports(prop, "initial")) {
-                  const line = lineOf(node.from);
+                  const line = doc.lineAt(node.from).number;
                   errors.push({
                     line,
                     message: `Baris ${line}: properti "${prop}" tidak dikenali`,
@@ -103,9 +97,19 @@ export function ProblemSolvingEditor({
                 }
               }
               if (node.name === "⚠") {
-                const line = lineOf(node.from);
-                if (!errorLines.has(line)) {
-                  errorLines.add(line);
+                const pos = Math.min(node.from, doc.length - 1);
+                const line = doc.lineAt(pos).number;
+                if (errorLines.has(line)) return;
+                const trimmed = doc.line(line).text.trim();
+                if (!trimmed || trimmed === "{" || trimmed === "}") return;
+                errorLines.add(line);
+                const parent = node.node.parent;
+                if (parent?.name === "ImportStatement") {
+                  errors.push({
+                    line,
+                    message: `Baris ${line}: blok CSS tidak lengkap`,
+                  });
+                } else {
                   errors.push({
                     line,
                     message: `Baris ${line}: missing semicolon`,
