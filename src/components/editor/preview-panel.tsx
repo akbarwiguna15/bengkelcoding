@@ -269,10 +269,19 @@ export function PreviewPanel({
     [htmlCode, cssCode, stableProps]
   );
 
+  const lastManualTsRef = useRef(0);
+
   const updatePreview = useCallback(
     (trig: "auto" | "manual") => {
       const iframe = iframeRef.current;
       if (!iframe) return;
+
+      if (trig === "manual") {
+        const now = Date.now();
+        if (now - lastManualTsRef.current < 800) return;
+        lastManualTsRef.current = now;
+      }
+
       setHasError(false);
       iframe.srcdoc = buildSrcdoc(trig);
     },

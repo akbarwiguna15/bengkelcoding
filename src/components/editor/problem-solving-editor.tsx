@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { CodeMirrorEditor } from "./codemirror-editor";
 import { PreviewPanel } from "./preview-panel";
 import { useEventRecorder } from "@/hooks/use-event-recorder";
-import { flushBuffer } from "@/lib/event-buffer";
+
 import { cssLanguage } from "@codemirror/lang-css";
 import { Text } from "@codemirror/state";
 
@@ -55,6 +55,30 @@ export function ProblemSolvingEditor({
 
   const lintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLintSigRef = useRef("");
+  const closeSentRef = useRef(false);
+
+  const sendCloseBeacon = useCallback(() => {
+    if (closeSentRef.current) return;
+    closeSentRef.current = true;
+    navigator.sendBeacon?.(
+      "/api/events",
+      new Blob(
+        [JSON.stringify({
+          events: [{
+            studentId,
+            classId,
+            taskId: soalId,
+            attemptId,
+            type: "attempt_close",
+            payload: { reason: "back" },
+            clientTs: new Date().toISOString(),
+            seq: -1,
+          }],
+        })],
+        { type: "application/json" }
+      )
+    );
+  }, [studentId, classId, soalId, attemptId]);
 
   useEffect(() => {
     record("attempt_open", {
@@ -63,26 +87,7 @@ export function ProblemSolvingEditor({
       model: "PROBLEM_SOLVING",
     });
     return () => {
-      const closeEvent = {
-        studentId,
-        classId,
-        taskId: soalId,
-        attemptId,
-        type: "attempt_close" as const,
-        payload: { reason: "back" },
-        clientTs: new Date().toISOString(),
-        seq: -1,
-      };
-      const sent = navigator.sendBeacon?.(
-        "/api/events",
-        new Blob(
-          [JSON.stringify({ events: [closeEvent] })],
-          { type: "application/json" }
-        )
-      );
-      if (!sent) {
-        record("attempt_close", { reason: "back" }).then(() => flushBuffer());
-      }
+      sendCloseBeacon();
       if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,8 +246,9 @@ export function ProblemSolvingEditor({
   }, [handRaised, record]);
 
   const handleClose = useCallback(() => {
+    sendCloseBeacon();
     onClose();
-  }, [onClose]);
+  }, [onClose, sendCloseBeacon]);
 
   const stableRelevantProps = useMemo(
     () => relevantProps,
