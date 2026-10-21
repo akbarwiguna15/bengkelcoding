@@ -57,28 +57,41 @@ export function ProblemSolvingEditor({
   const lastLintSigRef = useRef("");
   const closeSentRef = useRef(false);
 
+  const closePayload = useCallback(
+    () => ({
+      events: [{
+        studentId,
+        classId,
+        taskId: soalId,
+        attemptId,
+        type: "attempt_close",
+        payload: { reason: "back" },
+        clientTs: new Date().toISOString(),
+        seq: -1,
+      }],
+    }),
+    [studentId, classId, soalId, attemptId]
+  );
+
+  const sendCloseFetch = useCallback(() => {
+    if (closeSentRef.current) return;
+    closeSentRef.current = true;
+    fetch("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(closePayload()),
+      keepalive: true,
+    }).catch(() => {});
+  }, [closePayload]);
+
   const sendCloseBeacon = useCallback(() => {
     if (closeSentRef.current) return;
     closeSentRef.current = true;
     navigator.sendBeacon?.(
       "/api/events",
-      new Blob(
-        [JSON.stringify({
-          events: [{
-            studentId,
-            classId,
-            taskId: soalId,
-            attemptId,
-            type: "attempt_close",
-            payload: { reason: "back" },
-            clientTs: new Date().toISOString(),
-            seq: -1,
-          }],
-        })],
-        { type: "application/json" }
-      )
+      new Blob([JSON.stringify(closePayload())], { type: "application/json" })
     );
-  }, [studentId, classId, soalId, attemptId]);
+  }, [closePayload]);
 
   useEffect(() => {
     record("attempt_open", {
@@ -246,9 +259,9 @@ export function ProblemSolvingEditor({
   }, [handRaised, record]);
 
   const handleClose = useCallback(() => {
-    sendCloseBeacon();
+    sendCloseFetch();
     onClose();
-  }, [onClose, sendCloseBeacon]);
+  }, [onClose, sendCloseFetch]);
 
   const stableRelevantProps = useMemo(
     () => relevantProps,
