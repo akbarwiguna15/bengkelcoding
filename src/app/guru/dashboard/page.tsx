@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
+/* ─── Types ──────────────────────────────────────────────────── */
+
 type SoalModel = "PROBLEM_SOLVING" | "PBL" | "TRANSFORMATIF" | "DEEP_LEARNING";
 
 interface PriorityData {
@@ -29,12 +31,6 @@ interface StudentRow {
   offlineNote?: string;
 }
 
-const soalModels: SoalModel[] = [
-  "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PBL",
-  "PROBLEM_SOLVING", "PBL", "PROBLEM_SOLVING", "TRANSFORMATIF",
-  "PROBLEM_SOLVING", "DEEP_LEARNING",
-];
-
 interface HintItem {
   text: string;
   revealed: boolean;
@@ -45,6 +41,43 @@ interface HintPanelState {
   studentName: string;
   soalNum: number;
 }
+
+/* ─── Model configuration ──────────────────────────────────── */
+
+const MODEL_TABS: { id: SoalModel; label: string }[] = [
+  { id: "PROBLEM_SOLVING", label: "Problem Solving" },
+  { id: "PBL", label: "Project Based Learning" },
+  { id: "TRANSFORMATIF", label: "Transformatif" },
+  { id: "DEEP_LEARNING", label: "Deep Learning" },
+];
+
+const soalModels: SoalModel[] = [
+  "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PBL",
+  "PROBLEM_SOLVING", "PBL", "PROBLEM_SOLVING", "TRANSFORMATIF",
+  "PROBLEM_SOLVING", "DEEP_LEARNING",
+];
+
+const modelCounts: Record<SoalModel, number> = {
+  PROBLEM_SOLVING: 0, PBL: 0, TRANSFORMATIF: 0, DEEP_LEARNING: 0,
+};
+soalModels.forEach((m) => modelCounts[m]++);
+
+const modelSoalIndices: Record<SoalModel, number[]> = {
+  PROBLEM_SOLVING: [], PBL: [], TRANSFORMATIF: [], DEEP_LEARNING: [],
+};
+soalModels.forEach((m, i) => modelSoalIndices[m].push(i));
+
+function getInitialModel(): SoalModel {
+  const nonZero = MODEL_TABS.filter((t) => modelCounts[t.id] > 0);
+  if (nonZero.length === 1) return nonZero[0].id;
+  let best = nonZero[0];
+  for (const t of nonZero) {
+    if (modelCounts[t.id] > modelCounts[best.id]) best = t;
+  }
+  return best.id;
+}
+
+/* ─── PS helpers ─────────────────────────────────────────────── */
 
 function calcPrio(s: StudentRow): number {
   if (!s.hand || !s.hp) return 0;
@@ -68,6 +101,17 @@ function prioTag(score: number): { label: string; color: string; bg: string } {
   if (score >= 35) return { label: "Tinggi", color: "text-amber", bg: "bg-amber-soft border-amber" };
   return { label: "Sedang", color: "text-text-dim", bg: "bg-paper-dim border-line" };
 }
+
+function getPSStats(s: StudentRow) {
+  const indices = modelSoalIndices.PROBLEM_SOLVING;
+  const statuses = indices.map((i) => s.soalStatus[i]);
+  const done = statuses.filter((st) => st === "benar" || st === "salah").length;
+  const benar = statuses.filter((st) => st === "benar").length;
+  const avg = done > 0 ? Math.round((benar / done) * 100) : 0;
+  return { done, total: indices.length, avg };
+}
+
+/* ─── Demo data ──────────────────────────────────────────────── */
 
 const demoStudents: StudentRow[] = [
   {
@@ -100,6 +144,48 @@ const demoStudents: StudentRow[] = [
   },
 ];
 
+const pblMilestones = ["Perencanaan", "Riset", "Wireframe", "Implementasi", "Presentasi"];
+
+const pblData: Record<number, {
+  reached: number;
+  total: number;
+  lastApproved: string;
+  status: "berjalan" | "selesai" | "revisi";
+}> = {
+  1: { reached: 4, total: 5, lastApproved: "Wireframe", status: "berjalan" },
+  2: { reached: 5, total: 5, lastApproved: "Presentasi", status: "selesai" },
+  3: { reached: 2, total: 5, lastApproved: "Riset", status: "berjalan" },
+  4: { reached: 5, total: 5, lastApproved: "Presentasi", status: "selesai" },
+  5: { reached: 1, total: 5, lastApproved: "Perencanaan", status: "revisi" },
+};
+
+const trfData: Record<number, {
+  refleksiSent: number;
+  refleksiTotal: number;
+  penilaian: "menunggu" | "dinilai";
+  nilaiRubrik: number | null;
+}> = {
+  1: { refleksiSent: 1, refleksiTotal: 1, penilaian: "dinilai", nilaiRubrik: 82 },
+  2: { refleksiSent: 1, refleksiTotal: 1, penilaian: "dinilai", nilaiRubrik: 91 },
+  3: { refleksiSent: 0, refleksiTotal: 1, penilaian: "menunggu", nilaiRubrik: null },
+  4: { refleksiSent: 1, refleksiTotal: 1, penilaian: "dinilai", nilaiRubrik: 87 },
+  5: { refleksiSent: 1, refleksiTotal: 1, penilaian: "menunggu", nilaiRubrik: null },
+};
+
+const dlLayers = ["Memahami", "Menganalisis", "Mengevaluasi", "Mencipta"];
+
+const dlData: Record<number, {
+  lapisan: string;
+  skor: (number | null)[];
+  total: number | null;
+}> = {
+  1: { lapisan: "Mengevaluasi", skor: [85, 78, 72, null], total: null },
+  2: { lapisan: "Mencipta", skor: [92, 88, 85, 90], total: 89 },
+  3: { lapisan: "Memahami", skor: [55, null, null, null], total: null },
+  4: { lapisan: "Mengevaluasi", skor: [90, 82, 78, null], total: null },
+  5: { lapisan: "Memahami", skor: [40, null, null, null], total: null },
+};
+
 const errorPatterns = [
   { soal: "Soal 5 — Flexbox justify-content", salah: 12, total: 28, pct: 43, hint: "Banyak siswa menulis flex-start, bukan space-between." },
   { soal: "Soal 9 — Event listener", salah: 8, total: 28, pct: 29, hint: "Salah menerapkan addEventListener — sering lupa parameter kedua." },
@@ -122,6 +208,8 @@ const demoCodeLines = [
   "  padding: 0 16px;",
   "}",
 ];
+
+/* ─── HintPanel ──────────────────────────────────────────────── */
 
 function HintPanel({
   studentName,
@@ -187,7 +275,6 @@ function HintPanel({
         className="bg-paper w-full max-w-[620px] mx-4 p-6 border border-line shadow-lg max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex justify-between items-center mb-1">
           <h2 className="text-[16px] font-semibold">
             Bantuan untuk {studentName}
@@ -207,7 +294,6 @@ function HintPanel({
           </span>
         </div>
 
-        {/* Code viewer */}
         <div className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5">
           Kode siswa saat ini{" "}
           <span className="text-[10px] font-normal text-text-dim">
@@ -238,16 +324,13 @@ function HintPanel({
           })}
         </div>
 
-        {/* Spot indicator */}
         {spotLines.length > 0 && (
           <div className="text-[11.5px] text-amber mb-3.5 flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-amber inline-block" />
-            {spotLines.length} baris disorot — siswa melihat highlight di editor
-            mereka
+            {spotLines.length} baris disorot — siswa melihat highlight di editor mereka
           </div>
         )}
 
-        {/* Progressive hints */}
         <div className="text-[12px] font-semibold mb-2">Petunjuk bertahap</div>
         <div className="text-[11.5px] text-text-dim mb-2.5">
           Siswa membuka hint satu per satu. Hint berikutnya terkunci sampai
@@ -293,7 +376,6 @@ function HintPanel({
           })}
         </div>
 
-        {/* Add hint input */}
         <div className="flex gap-2 items-end mb-4">
           <div className="flex-1">
             <label className="text-[12px] font-semibold block mb-1">
@@ -318,7 +400,6 @@ function HintPanel({
           </button>
         </div>
 
-        {/* Demo buttons */}
         <div className="border-t border-line pt-3 text-[11.5px] text-text-dim flex gap-3 flex-wrap">
           <button
             className="px-2.5 py-1 border border-line bg-white text-text-primary text-[11px] hover:bg-paper-dim"
@@ -338,36 +419,110 @@ function HintPanel({
   );
 }
 
+/* ─── Main page ──────────────────────────────────────────────── */
+
 export default function RekapPage() {
+  const [activeModel, setActiveModel] = useState<SoalModel>(getInitialModel);
   const [openDetail, setOpenDetail] = useState<number | null>(null);
   const [hintPanel, setHintPanel] = useState<HintPanelState | null>(null);
+
+  function handleModelChange(model: SoalModel) {
+    if (modelCounts[model] === 0) return;
+    setActiveModel(model);
+    setOpenDetail(null);
+  }
+
+  const innerTabs =
+    activeModel === "TRANSFORMATIF"
+      ? [{ id: "persiswa", label: "Per Siswa" }]
+      : [
+          { id: "persiswa", label: "Per Siswa" },
+          { id: "pola", label: "Pola Kesalahan Kelas" },
+        ];
 
   return (
     <div className="animate-fade-in">
       <h1 className="text-[20px] font-semibold mb-1">Rekap nilai siswa</h1>
-      <p className="text-[13.5px] text-text-dim mb-6">
+      <p className="text-[13.5px] text-text-dim mb-5">
         Kelas X RPL 2 — Materi: HTML dan CSS
       </p>
 
-      <Tabs
-        tabs={[
-          { id: "persiswa", label: "Per Siswa" },
-          { id: "pola", label: "Pola Kesalahan Kelas" },
-        ]}
-      >
-        {(activeTab) =>
-          activeTab === "persiswa" ? (
-            <div className="border border-line">
-              {/* Table header */}
-              <div className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
-                <span>Nama</span>
-                <span>Soal</span>
-                <span>Rata-rata</span>
-                <span>Sisa waktu</span>
-                <span>Status</span>
-              </div>
+      {/* ── Model selector tabs ────────────────────────────────── */}
+      <div className="flex gap-1 mb-5 border-b border-line overflow-x-auto">
+        {MODEL_TABS.map((tab) => {
+          const count = modelCounts[tab.id];
+          const disabled = count === 0;
+          const isActive = activeModel === tab.id;
+          return (
+            <button
+              key={tab.id}
+              disabled={disabled}
+              onClick={() => handleModelChange(tab.id)}
+              className={cn(
+                "font-sans text-[13px] font-medium bg-transparent border-none pb-2.5 pt-2.5 mr-3 whitespace-nowrap",
+                "border-b-2 transition-colors",
+                disabled
+                  ? "text-text-dim/40 border-b-transparent cursor-not-allowed"
+                  : isActive
+                    ? "text-text-primary font-semibold border-b-copper cursor-pointer"
+                    : "text-text-dim border-b-transparent cursor-pointer hover:text-text-primary"
+              )}
+            >
+              {tab.label}{" "}
+              <span
+                className={cn(
+                  "font-mono text-[12px]",
+                  disabled ? "text-text-dim/30" : isActive ? "text-copper" : "text-text-dim"
+                )}
+              >
+                ({count})
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-              {/* Student rows */}
+      {/* ── Inner tabs: Per Siswa / Pola Kesalahan ─────────────── */}
+      <Tabs key={activeModel} tabs={innerTabs}>
+        {(innerTab) =>
+          innerTab === "persiswa" ? (
+            <div className="border border-line overflow-x-auto">
+              {/* ── Table header — per model ──────────────────── */}
+              {activeModel === "PROBLEM_SOLVING" && (
+                <div className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                  <span>Nama</span>
+                  <span>Soal dikerjakan</span>
+                  <span>Rata-rata nilai</span>
+                  <span>Lama di soal</span>
+                  <span>Status</span>
+                </div>
+              )}
+              {activeModel === "PBL" && (
+                <div className="grid grid-cols-[2fr_1fr_1.5fr_.8fr] min-w-[520px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                  <span>Nama</span>
+                  <span>Tahap tercapai</span>
+                  <span>Terakhir disetujui</span>
+                  <span>Status</span>
+                </div>
+              )}
+              {activeModel === "TRANSFORMATIF" && (
+                <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr] min-w-[520px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                  <span>Nama</span>
+                  <span>Refleksi terkirim</span>
+                  <span>Status penilaian</span>
+                  <span>Nilai rubrik</span>
+                </div>
+              )}
+              {activeModel === "DEEP_LEARNING" && (
+                <div className="grid grid-cols-[2fr_1.2fr_2fr_.6fr] min-w-[580px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                  <span>Nama</span>
+                  <span>Lapisan tercapai</span>
+                  <span>Skor per lapisan</span>
+                  <span>Total</span>
+                </div>
+              )}
+
+              {/* ── Student rows ──────────────────────────────── */}
               {demoStudents.map((s) => {
                 const isOpen = openDetail === s.id;
                 const prio = s.hand ? calcPrio(s) : 0;
@@ -375,166 +530,427 @@ export default function RekapPage() {
 
                 return (
                   <div key={s.id} className="border-b border-line">
-                    {/* Row */}
-                    <div
-                      className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
-                      onClick={() => setOpenDetail(isOpen ? null : s.id)}
-                    >
-                      {/* Name + summary badge */}
-                      <span className="flex items-center gap-1.5">
-                        {s.name}
-                        {s.hand && pt && (
-                          <span
-                            className={cn(
-                              "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
-                              pt.bg, pt.color
-                            )}
+                    {/* ── PS row ──────────────────────────────── */}
+                    {activeModel === "PROBLEM_SOLVING" &&
+                      (() => {
+                        const ps = getPSStats(s);
+                        return (
+                          <div
+                            className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
                           >
-                            &#9995;
-                          </span>
-                        )}
-                        <span className={cn(
-                          "text-[11px] text-text-dim transition-transform",
-                          isOpen && "rotate-90"
-                        )}>
-                          &#9656;
-                        </span>
-                      </span>
+                            <span className="flex items-center gap-1.5">
+                              {s.name}
+                              {s.hand && (
+                                <span className="text-[14px]">&#9995;</span>
+                              )}
+                              {s.hand && pt && (
+                                <span
+                                  className={cn(
+                                    "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                    pt.bg,
+                                    pt.color
+                                  )}
+                                >
+                                  {pt.label}
+                                </span>
+                              )}
+                              <span
+                                className={cn(
+                                  "text-[11px] text-text-dim transition-transform",
+                                  isOpen && "rotate-90"
+                                )}
+                              >
+                                &#9656;
+                              </span>
+                            </span>
+                            <span className="font-mono text-[13px]">
+                              {ps.done}/{ps.total}
+                            </span>
+                            <span className="flex items-center gap-2">
+                              <span className="inline-block w-[90px] h-2 bg-paper-dim rounded overflow-hidden">
+                                <span
+                                  className="block h-full bg-pcb rounded"
+                                  style={{ width: `${Math.round(ps.avg * 0.9)}%` }}
+                                />
+                              </span>
+                              <span className="font-mono text-[13px] font-medium">
+                                {ps.avg}
+                              </span>
+                            </span>
+                            <span
+                              className={cn(
+                                "font-mono text-[12.5px]",
+                                s.hp.timeLeft != null && s.hp.timeLeft <= 15
+                                  ? "text-rust"
+                                  : "text-text-dim"
+                              )}
+                            >
+                              {s.hp.timeLeft != null ? `${s.hp.timeLeft}m` : "—"}
+                            </span>
+                            <span
+                              className={cn(
+                                "text-[12.5px] font-mono",
+                                s.status === "selesai" ? "text-pcb" : "text-amber"
+                              )}
+                            >
+                              {s.status}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
-                      {/* Soal done */}
-                      <span className="font-mono text-[13px]">
-                        {s.done}/{s.total}
-                      </span>
+                    {/* ── PBL row ─────────────────────────────── */}
+                    {activeModel === "PBL" &&
+                      (() => {
+                        const d = pblData[s.id];
+                        return (
+                          <div
+                            className="grid grid-cols-[2fr_1fr_1.5fr_.8fr] min-w-[520px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              {s.name}
+                              {s.hand && (
+                                <span className="text-[14px]">&#9995;</span>
+                              )}
+                              <span
+                                className={cn(
+                                  "text-[11px] text-text-dim transition-transform",
+                                  isOpen && "rotate-90"
+                                )}
+                              >
+                                &#9656;
+                              </span>
+                            </span>
+                            <span className="font-mono text-[13px]">
+                              {d.reached}/{d.total}
+                            </span>
+                            <span className="text-[13px]">{d.lastApproved}</span>
+                            <span
+                              className={cn(
+                                "text-[12.5px] font-mono",
+                                d.status === "selesai"
+                                  ? "text-pcb"
+                                  : d.status === "revisi"
+                                    ? "text-rust"
+                                    : "text-amber"
+                              )}
+                            >
+                              {d.status}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
-                      {/* Average with bar */}
-                      <span className="flex items-center gap-2">
-                        <span className="inline-block w-[90px] h-2 bg-paper-dim rounded overflow-hidden">
-                          <span
-                            className="block h-full bg-pcb rounded"
-                            style={{ width: `${Math.round(s.avg * 0.9)}%` }}
-                          />
-                        </span>
-                        <span className="font-mono text-[13px] font-medium">{s.avg}</span>
-                      </span>
+                    {/* ── TRF row ─────────────────────────────── */}
+                    {activeModel === "TRANSFORMATIF" &&
+                      (() => {
+                        const d = trfData[s.id];
+                        return (
+                          <div
+                            className="grid grid-cols-[2fr_1fr_1.2fr_1fr] min-w-[520px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              {s.name}
+                              {s.hand && (
+                                <span className="text-[14px]">&#9995;</span>
+                              )}
+                              <span
+                                className={cn(
+                                  "text-[11px] text-text-dim transition-transform",
+                                  isOpen && "rotate-90"
+                                )}
+                              >
+                                &#9656;
+                              </span>
+                            </span>
+                            <span className="font-mono text-[13px]">
+                              {d.refleksiSent}/{d.refleksiTotal}
+                            </span>
+                            <span
+                              className={cn(
+                                "text-[12.5px] font-mono",
+                                d.penilaian === "dinilai" ? "text-pcb" : "text-amber"
+                              )}
+                            >
+                              {d.penilaian}
+                            </span>
+                            <span className="font-mono text-[13px] font-medium">
+                              {d.nilaiRubrik != null ? d.nilaiRubrik : "—"}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
-                      {/* Time remaining */}
-                      <span className={cn(
-                        "font-mono text-[12.5px]",
-                        s.hp.timeLeft != null && s.hp.timeLeft <= 15
-                          ? "text-rust"
-                          : "text-text-dim"
-                      )}>
-                        {s.hp.timeLeft != null ? `${s.hp.timeLeft}m` : "—"}
-                      </span>
+                    {/* ── DL row ──────────────────────────────── */}
+                    {activeModel === "DEEP_LEARNING" &&
+                      (() => {
+                        const d = dlData[s.id];
+                        return (
+                          <div
+                            className="grid grid-cols-[2fr_1.2fr_2fr_.6fr] min-w-[580px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              {s.name}
+                              {s.hand && (
+                                <span className="text-[14px]">&#9995;</span>
+                              )}
+                              <span
+                                className={cn(
+                                  "text-[11px] text-text-dim transition-transform",
+                                  isOpen && "rotate-90"
+                                )}
+                              >
+                                &#9656;
+                              </span>
+                            </span>
+                            <span className="text-[13px]">{d.lapisan}</span>
+                            <span className="flex gap-1.5 font-mono text-[12px]">
+                              {d.skor.map((v, i) => (
+                                <span
+                                  key={i}
+                                  className={cn(
+                                    "px-1.5 py-0.5 border",
+                                    v != null
+                                      ? "border-line bg-white"
+                                      : "border-transparent text-text-dim"
+                                  )}
+                                >
+                                  {v != null ? v : "—"}
+                                </span>
+                              ))}
+                            </span>
+                            <span className="font-mono text-[13px] font-medium">
+                              {d.total != null ? d.total : "—"}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
-                      {/* Status */}
-                      <span className={cn(
-                        "text-[12.5px] font-mono",
-                        s.status === "selesai" ? "text-pcb" : "text-amber"
-                      )}>
-                        {s.status}
-                      </span>
-                    </div>
-
-                    {/* Detail panel */}
-                    {isOpen && (
+                    {/* ── PS detail panel ─────────────────────── */}
+                    {isOpen && activeModel === "PROBLEM_SOLVING" && (
                       <div className="bg-paper-dim p-4 border-t border-line">
                         {s.offlineNote && (
                           <div className="text-[12px] text-rust mb-3">
                             {s.offlineNote}
                           </div>
                         )}
-
                         {s.live && (
                           <div className="text-[12.5px] text-text-dim mb-3">
                             Diperbarui real-time — sedang dikerjakan.
                           </div>
                         )}
-
                         {s.hand && (
                           <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
                             <span className="text-[16px]">&#9995;</span>
                             Siswa mengangkat tangan — klik soal untuk membantu.
                           </div>
                         )}
-
-                        {/* Legend */}
                         <div className="flex gap-4 mb-3 flex-wrap text-[11.5px] text-text-dim">
                           <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-pcb" />Benar
+                            <span className="w-2.5 h-2.5 rounded-full bg-pcb" />
+                            Benar
                           </span>
                           <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-rust" />Salah
+                            <span className="w-2.5 h-2.5 rounded-full bg-rust" />
+                            Salah
                           </span>
                           <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-amber" />Sedang dikerjakan
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber" />
+                            Sedang dikerjakan
                           </span>
                           <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-white border-[1.5px] border-line" />Belum dikerjakan
+                            <span className="w-2.5 h-2.5 rounded-full bg-white border-[1.5px] border-line" />
+                            Belum dikerjakan
                           </span>
                         </div>
-
-                        {/* Soal circles */}
                         <div className="flex gap-2.5 flex-wrap">
-                          {s.soalStatus.map((st, i) => {
-                            const isClickable = st === "proses" && s.live;
+                          {modelSoalIndices.PROBLEM_SOLVING.map((idx) => {
+                            const st = s.soalStatus[idx];
+                            const soalNum = idx + 1;
                             const isActive = st === "proses";
-                            const model = soalModels[i];
-                            const showHandBadge = isActive && s.hand;
-                            const showPrioBadge = isActive && s.hand && pt;
+                            const isClickable = isActive && s.live;
                             return (
-                              <div key={i} className="flex flex-col items-center gap-1">
+                              <div
+                                key={idx}
+                                className="flex flex-col items-center gap-1"
+                              >
                                 <div
                                   className={cn(
-                                    "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px] relative",
+                                    "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px]",
                                     soalColors[st],
-                                    isClickable && "cursor-pointer hover:ring-2 hover:ring-amber/50"
+                                    isClickable &&
+                                      "cursor-pointer hover:ring-2 hover:ring-amber/50"
                                   )}
                                   onClick={(e) => {
                                     if (isClickable) {
                                       e.stopPropagation();
-                                      setHintPanel({ studentName: s.name, soalNum: i + 1 });
+                                      setHintPanel({
+                                        studentName: s.name,
+                                        soalNum,
+                                      });
                                     }
                                   }}
                                 >
                                   {isActive && s.liveMin ? (
-                                    <span className="text-[11px]">{s.liveMin}m</span>
-                                  ) : (
-                                    i + 1
-                                  )}
-                                  {showHandBadge && (
-                                    <span className="absolute -top-1.5 -right-1.5 text-[14px] animate-pulse-slow drop-shadow-sm">
-                                      &#9995;
+                                    <span className="text-[11px]">
+                                      {s.liveMin}m
                                     </span>
+                                  ) : (
+                                    soalNum
                                   )}
                                 </div>
-                                {showPrioBadge && pt && (
-                                  <span
-                                    className={cn(
-                                      "text-[9px] font-semibold px-1.5 py-px border whitespace-nowrap",
-                                      pt.bg, pt.color
-                                    )}
-                                  >
-                                    {pt.label}
-                                  </span>
-                                )}
-                                {model !== "PROBLEM_SOLVING" && isActive && (
-                                  <span className="text-[9px] text-text-dim font-mono">
-                                    {model === "PBL" ? "PBL" : model === "TRANSFORMATIF" ? "TRF" : "DL"}
-                                  </span>
-                                )}
                               </div>
                             );
                           })}
                         </div>
                       </div>
                     )}
+
+                    {/* ── PBL detail panel ────────────────────── */}
+                    {isOpen &&
+                      activeModel === "PBL" &&
+                      (() => {
+                        const d = pblData[s.id];
+                        return (
+                          <div className="bg-paper-dim p-4 border-t border-line">
+                            {s.hand && (
+                              <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
+                                <span className="text-[16px]">&#9995;</span>
+                                Siswa mengangkat tangan.
+                              </div>
+                            )}
+                            <div className="text-[12px] font-semibold mb-2">
+                              Progres milestone
+                            </div>
+                            <div className="flex gap-1.5 items-center flex-wrap">
+                              {pblMilestones.map((m, i) => {
+                                const done = i < d.reached;
+                                const current =
+                                  i === d.reached && d.reached < d.total;
+                                return (
+                                  <div
+                                    key={i}
+                                    className="flex items-center gap-1.5"
+                                  >
+                                    {i > 0 && (
+                                      <span className="text-text-dim/50 text-[10px]">
+                                        &rarr;
+                                      </span>
+                                    )}
+                                    <span
+                                      className={cn(
+                                        "text-[11.5px] px-2 py-1 border",
+                                        done
+                                          ? "bg-pcb/10 border-pcb text-pcb"
+                                          : current
+                                            ? "bg-amber/10 border-amber text-amber"
+                                            : "bg-paper border-line text-text-dim"
+                                      )}
+                                    >
+                                      {done ? "✓" : current ? "●" : "○"} {m}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                    {/* ── TRF detail panel ────────────────────── */}
+                    {isOpen &&
+                      activeModel === "TRANSFORMATIF" &&
+                      (() => {
+                        const d = trfData[s.id];
+                        return (
+                          <div className="bg-paper-dim p-4 border-t border-line">
+                            {s.hand && (
+                              <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
+                                <span className="text-[16px]">&#9995;</span>
+                                Siswa mengangkat tangan.
+                              </div>
+                            )}
+                            <div className="text-[12px] font-semibold mb-2">
+                              Detail penilaian rubrik
+                            </div>
+                            {d.penilaian === "dinilai" ? (
+                              <div className="flex items-center gap-3">
+                                <span className="inline-block w-[120px] h-2.5 bg-paper rounded overflow-hidden">
+                                  <span
+                                    className="block h-full bg-pcb rounded"
+                                    style={{
+                                      width: `${d.nilaiRubrik}%`,
+                                    }}
+                                  />
+                                </span>
+                                <span className="font-mono text-[13px] font-medium">
+                                  {d.nilaiRubrik}/100
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="text-[12.5px] text-text-dim">
+                                Menunggu penilaian guru.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                    {/* ── DL detail panel ─────────────────────── */}
+                    {isOpen &&
+                      activeModel === "DEEP_LEARNING" &&
+                      (() => {
+                        const d = dlData[s.id];
+                        return (
+                          <div className="bg-paper-dim p-4 border-t border-line">
+                            {s.hand && (
+                              <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
+                                <span className="text-[16px]">&#9995;</span>
+                                Siswa mengangkat tangan.
+                              </div>
+                            )}
+                            <div className="text-[12px] font-semibold mb-2">
+                              Skor per lapisan
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              {dlLayers.map((layer, i) => {
+                                const skor = d.skor[i];
+                                return (
+                                  <div
+                                    key={i}
+                                    className="flex items-center gap-2 text-[12.5px]"
+                                  >
+                                    <span className="w-[100px] text-text-dim">
+                                      {layer}
+                                    </span>
+                                    <span className="flex-1 h-2 bg-paper rounded overflow-hidden max-w-[120px]">
+                                      {skor != null && (
+                                        <span
+                                          className="block h-full bg-pcb rounded"
+                                          style={{ width: `${skor}%` }}
+                                        />
+                                      )}
+                                    </span>
+                                    <span className="font-mono text-[12px] w-8 text-right">
+                                      {skor != null ? skor : "—"}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                   </div>
                 );
               })}
             </div>
           ) : (
-            /* Pola Kesalahan Kelas tab */
+            /* ── Pola Kesalahan Kelas tab ─────────────────────── */
             <div className="flex flex-col gap-3">
               {errorPatterns.map((p, i) => (
                 <div key={i} className="border border-line bg-white p-[18px]">
