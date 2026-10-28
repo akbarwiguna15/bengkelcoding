@@ -25,6 +25,7 @@ interface StudentRow {
   status: "selesai" | "berjalan";
   soalStatus: ("benar" | "salah" | "proses" | "belum")[];
   hand: boolean;
+  autoStuck?: boolean;
   hp: PriorityData;
   live?: boolean;
   liveMin?: number;
@@ -77,10 +78,10 @@ function getInitialModel(): SoalModel {
   return best.id;
 }
 
-/* ─── PS helpers ─────────────────────────────────────────────── */
+/* ─── Priority helpers ───────────────────────────────────────── */
 
 function calcPrio(s: StudentRow): number {
-  if (!s.hand || !s.hp) return 0;
+  if ((!s.hand && !s.autoStuck) || !s.hp) return 0;
   const p = s.hp;
   let sc = 0;
   sc += Math.min(p.repeat * 6, 30);
@@ -139,7 +140,7 @@ const demoStudents: StudentRow[] = [
   {
     id: 5, name: "Eko Prasetyo", done: 3, total: 10, avg: 41, status: "berjalan",
     soalStatus: ["benar","salah","salah","proses","belum","belum","belum","belum","belum","belum"],
-    hand: true, hp: { fail: 3, repeat: 1, df: "Mudah", helped: false, timeLeft: 52 },
+    hand: false, autoStuck: true, hp: { fail: 3, repeat: 1, df: "Mudah", helped: false, timeLeft: 52 },
     live: true, liveMin: 12,
   },
 ];
@@ -525,8 +526,8 @@ export default function RekapPage() {
               {/* ── Student rows ──────────────────────────────── */}
               {demoStudents.map((s) => {
                 const isOpen = openDetail === s.id;
-                const prio = s.hand ? calcPrio(s) : 0;
-                const pt = s.hand ? prioTag(prio) : null;
+                const prio = calcPrio(s);
+                const pt = prio > 0 ? prioTag(prio) : null;
 
                 return (
                   <div key={s.id} className="border-b border-line">
@@ -544,7 +545,7 @@ export default function RekapPage() {
                               {s.hand && (
                                 <span className="text-[14px]">&#9995;</span>
                               )}
-                              {s.hand && pt && (
+                              {(s.hand || s.autoStuck) && pt && (
                                 <span
                                   className={cn(
                                     "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
@@ -552,7 +553,8 @@ export default function RekapPage() {
                                     pt.color
                                   )}
                                 >
-                                  {pt.label}
+                                  {pt.label} &middot;{" "}
+                                  {s.hand ? "angkat tangan" : "terdeteksi"}
                                 </span>
                               )}
                               <span
@@ -614,6 +616,17 @@ export default function RekapPage() {
                               {s.hand && (
                                 <span className="text-[14px]">&#9995;</span>
                               )}
+                              {s.hand && pt && (
+                                <span
+                                  className={cn(
+                                    "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                    pt.bg,
+                                    pt.color
+                                  )}
+                                >
+                                  {pt.label} &middot; angkat tangan
+                                </span>
+                              )}
                               <span
                                 className={cn(
                                   "text-[11px] text-text-dim transition-transform",
@@ -657,6 +670,17 @@ export default function RekapPage() {
                               {s.hand && (
                                 <span className="text-[14px]">&#9995;</span>
                               )}
+                              {s.hand && pt && (
+                                <span
+                                  className={cn(
+                                    "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                    pt.bg,
+                                    pt.color
+                                  )}
+                                >
+                                  {pt.label} &middot; angkat tangan
+                                </span>
+                              )}
                               <span
                                 className={cn(
                                   "text-[11px] text-text-dim transition-transform",
@@ -697,6 +721,17 @@ export default function RekapPage() {
                               {s.name}
                               {s.hand && (
                                 <span className="text-[14px]">&#9995;</span>
+                              )}
+                              {s.hand && pt && (
+                                <span
+                                  className={cn(
+                                    "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                    pt.bg,
+                                    pt.color
+                                  )}
+                                >
+                                  {pt.label} &middot; angkat tangan
+                                </span>
                               )}
                               <span
                                 className={cn(
@@ -747,6 +782,12 @@ export default function RekapPage() {
                           <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
                             <span className="text-[16px]">&#9995;</span>
                             Siswa mengangkat tangan — klik soal untuk membantu.
+                          </div>
+                        )}
+                        {!s.hand && s.autoStuck && (
+                          <div className="bg-rust-soft border border-rust px-3 py-2 mb-3 text-[12.5px] text-rust flex items-center gap-2">
+                            <span className="text-[14px]">&#9888;</span>
+                            Terdeteksi kebuntuan otomatis — klik soal untuk membantu.
                           </div>
                         )}
                         <div className="flex gap-4 mb-3 flex-wrap text-[11.5px] text-text-dim">
