@@ -51,6 +51,7 @@ export interface StudentStatusData {
   status: StudentActivityStatusType;
   lastEventAt: string;
   stuckMinutes?: number;
+  learningModel?: "PROBLEM_SOLVING" | "PBL" | "TRANSFORMATIF" | "DEEP_LEARNING";
 }
 
 export interface ErrorPatternData {
