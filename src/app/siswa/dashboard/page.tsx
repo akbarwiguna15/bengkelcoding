@@ -45,8 +45,10 @@ interface ApiSoal {
   learningModel: string;
   difficulty: string;
   starterCode: string | null;
+  starterHtml: string | null;
   language: string | null;
   regime: string | null;
+  relevantProps: string[];
   testCases: ApiTestCase[];
   milestones: ApiMilestone[];
   rubricCriteria: ApiRubricCriterion[];
@@ -325,10 +327,11 @@ export default function LatihanPage() {
                       .filter((tc) => tc.label)
                       .map((tc) => tc.label!)}
                     starterCode={soal.starterCode ?? ""}
-                    starterHtml=""
+                    starterHtml={soal.starterHtml ?? ""}
                     language={(soal.language as "css" | "html" | "javascript") ?? "css"}
                     fileName={`soal.${soal.language ?? "css"}`}
                     regime={(soal.regime as "silent" | "verbose") ?? "verbose"}
+                    relevantProps={soal.relevantProps}
                     studentId={studentId}
                     classId={kelasId}
                     onClose={closeEditor}
