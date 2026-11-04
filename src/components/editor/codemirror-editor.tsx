@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
-import { autocompletion } from "@codemirror/autocomplete";
+import {
+  autocompletion,
+  acceptCompletion,
+  closeCompletion,
+  moveCompletionSelection,
+} from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 
 const EDIT_AGGREGATE_MS = 5_000;
@@ -165,7 +170,15 @@ export function CodeMirrorEditor({
         highlightActiveLine(),
         history(),
         langExtension,
-        autocompletion(),
+        autocompletion({ defaultKeymap: false }),
+        Prec.highest(
+          keymap.of([
+            { key: "Tab", run: acceptCompletion },
+            { key: "Escape", run: closeCompletion },
+            { key: "ArrowDown", run: moveCompletionSelection(true) },
+            { key: "ArrowUp", run: moveCompletionSelection(false) },
+          ])
+        ),
         highlightSelectionMatches(),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         bengkelTheme,
