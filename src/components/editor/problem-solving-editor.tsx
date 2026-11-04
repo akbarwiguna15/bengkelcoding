@@ -51,6 +51,13 @@ export function ProblemSolvingEditor({
     { line: number; message: string }[]
   >([]);
   const [handRaised, setHandRaised] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState<{
+    passed: number;
+    total: number;
+    score: number;
+    failedCriteria: string[];
+  } | null>(null);
 
   const { record } = useEventRecorder(studentId, classId, soalId, attemptId);
 
@@ -236,9 +243,43 @@ export function ProblemSolvingEditor({
     [record]
   );
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitResult(null);
     record("submit", {});
-  }, [record]);
+
+    try {
+      const subRes = await fetch("/api/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ soalId }),
+      });
+      if (!subRes.ok) throw new Error("Gagal membuat submission");
+      const submission = await subRes.json();
+
+      const runRes = await fetch(`/api/submissions/${submission.id}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (!runRes.ok) throw new Error("Gagal menjalankan test");
+      const result = await runRes.json();
+
+      const passed: number = result.testsPassed ?? 0;
+      const total: number = result.testsTotal ?? 0;
+      const failedCriteria: string[] = (result.testResults ?? [])
+        .filter((t: { passed: boolean }) => !t.passed)
+        .map((t: { label: string }) => t.label);
+
+      setSubmitResult({ passed, total, score: result.score ?? 0, failedCriteria });
+      record("submit_result", { passed, total, failedCriteria });
+    } catch {
+      setSubmitResult({ passed: 0, total: 0, score: 0, failedCriteria: ["Gagal mengirim"] });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [submitting, code, soalId, record]);
 
   const handleRaiseHand = useCallback(() => {
     const next = !handRaised;
@@ -332,9 +373,10 @@ export function ProblemSolvingEditor({
               </button>
               <button
                 onClick={handleSubmit}
-                className="bg-copper text-white border-none px-3 py-1 text-[12px] font-sans cursor-pointer hover:opacity-85"
+                disabled={submitting}
+                className={`bg-copper text-white border-none px-3 py-1 text-[12px] font-sans cursor-pointer hover:opacity-85 ${submitting ? "opacity-50" : ""}`}
               >
-                Kirim jawaban
+                {submitting ? "Mengirim..." : "Kirim jawaban"}
               </button>
             </div>
           </div>
@@ -358,6 +400,26 @@ export function ProblemSolvingEditor({
                   ⚠ {err.message}
                 </div>
               ))}
+            </div>
+          )}
+
+          {submitResult && (
+            <div
+              className={`font-mono text-[12px] px-4 py-2.5 border-t border-[#2a3b32] ${
+                submitResult.passed === submitResult.total && submitResult.total > 0
+                  ? "bg-[#0f2a1a] text-[#4aba80]"
+                  : "bg-[#2a0f0f] text-[#e0967a]"
+              }`}
+            >
+              <div className="font-semibold mb-1">
+                Hasil: {submitResult.passed}/{submitResult.total} test lulus
+                {submitResult.total > 0 && ` (${submitResult.score}%)`}
+              </div>
+              {submitResult.failedCriteria.length > 0 && (
+                <div className="text-[11px] opacity-80">
+                  Gagal: {submitResult.failedCriteria.join(", ")}
+                </div>
+              )}
             </div>
           )}
 

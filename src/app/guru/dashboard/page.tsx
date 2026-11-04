@@ -627,6 +627,8 @@ export default function RekapPage() {
   const [activeModel, setActiveModel] = useState<SoalModel>("PROBLEM_SOLVING");
   const [openDetail, setOpenDetail] = useState<string | null>(null);
   const [hintPanel, setHintPanel] = useState<HintPanelState | null>(null);
+  const [flagged, setFlagged] = useState<Set<string>>(new Set());
+  const [flagBusy, setFlagBusy] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch("/api/kelas")
@@ -695,6 +697,45 @@ export default function RekapPage() {
     if (modelCounts[model] === 0) return;
     setActiveModel(model);
     setOpenDetail(null);
+  }
+
+  function toggleFlag(studentId: string, soalId: string) {
+    const key = `${studentId}::${soalId}`;
+    if (flagBusy.has(key)) return;
+    const isCurrentlyFlagged = flagged.has(key);
+    const value = isCurrentlyFlagged ? "ok" : "stuck";
+
+    setFlagBusy((prev) => new Set(prev).add(key));
+    fetch("/api/teacher-flag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId,
+        soalId,
+        classId: selectedKelasId,
+        value,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.value === "stuck") {
+          setFlagged((prev) => new Set(prev).add(key));
+        } else {
+          setFlagged((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() =>
+        setFlagBusy((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        })
+      );
   }
 
   function getPSStats(s: StudentRow) {
@@ -1222,6 +1263,11 @@ export default function RekapPage() {
                                 const isActive = st === "proses";
                                 const isClickable = isActive && s.live;
                                 const soal = rekapData?.soalList[idx];
+                                const flagKey = soal
+                                  ? `${s.id}::${soal.soalId}`
+                                  : "";
+                                const isFlagged = flagged.has(flagKey);
+                                const isFlagBusy = flagBusy.has(flagKey);
                                 return (
                                   <div
                                     key={idx}
@@ -1254,6 +1300,28 @@ export default function RekapPage() {
                                         soalNum
                                       )}
                                     </div>
+                                    {soal && (
+                                      <button
+                                        className={cn(
+                                          "text-[10px] px-1.5 py-0.5 border cursor-pointer",
+                                          isFlagged
+                                            ? "bg-rust text-white border-rust"
+                                            : "bg-transparent text-text-dim border-line hover:border-rust hover:text-rust",
+                                          isFlagBusy && "opacity-50"
+                                        )}
+                                        title={
+                                          isFlagged
+                                            ? "Batal tandai buntu"
+                                            : "Tandai buntu"
+                                        }
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleFlag(s.id, soal.soalId);
+                                        }}
+                                      >
+                                        {isFlagged ? "⚑" : "⚐"}
+                                      </button>
+                                    )}
                                   </div>
                                 );
                               })}
