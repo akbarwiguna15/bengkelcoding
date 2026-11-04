@@ -961,15 +961,24 @@ export default function RekapPage() {
                           (() => {
                             const ps = getPSStats(s);
                             const psIndices = modelSoalIndices.PROBLEM_SOLVING;
-                            const activeSoalIdx = psIndices.find(
-                              (i) => s.soalStatus[i] === "proses"
+                            const apiStudent = rekapData?.students.find(
+                              (st) => st.id === s.id
                             );
-                            const activeSoal =
-                              activeSoalIdx != null
-                                ? rekapData?.soalList[activeSoalIdx]
+                            const activeSoalFromApi =
+                              apiStudent?.activeSoalId
+                                ? rekapData?.soalList.find(
+                                    (sl) =>
+                                      sl.soalId === apiStudent.activeSoalId
+                                  )
                                 : undefined;
-                            const flagKey = activeSoal
-                              ? `${s.id}::${activeSoal.soalId}`
+                            const firstPsSoal =
+                              psIndices.length > 0
+                                ? rekapData?.soalList[psIndices[0]]
+                                : undefined;
+                            const targetSoal =
+                              activeSoalFromApi ?? firstPsSoal;
+                            const flagKey = targetSoal
+                              ? `${s.id}::${targetSoal.soalId}`
                               : "";
                             const isFlagged = flagKey
                               ? flagged.has(flagKey)
@@ -1056,22 +1065,24 @@ export default function RekapPage() {
                                   {s.status}
                                 </span>
                                 <span>
-                                  {activeSoal ? (
+                                  {targetSoal ? (
                                     <button
                                       className={cn(
                                         "min-h-[44px] min-w-[44px] px-3 py-2 text-[12.5px] font-semibold border-2 rounded transition-colors",
                                         isFlagged
-                                          ? "bg-rust text-white border-rust"
+                                          ? "bg-rust text-white border-rust hover:opacity-85"
                                           : "bg-transparent text-text-dim border-line hover:border-rust hover:text-rust",
                                         isBusy && "opacity-50 cursor-wait"
                                       )}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        toggleFlag(s.id, activeSoal.soalId);
+                                        toggleFlag(s.id, targetSoal.soalId);
                                       }}
                                       disabled={isBusy}
                                     >
-                                      {isFlagged ? "✕ Buntu" : "Tandai buntu"}
+                                      {isFlagged
+                                        ? "Buntu · cabut"
+                                        : "Tandai buntu"}
                                     </button>
                                   ) : (
                                     <span className="text-[11px] text-text-dim">
@@ -1356,7 +1367,7 @@ export default function RekapPage() {
                                         className={cn(
                                           "min-h-[36px] px-2 py-1 text-[11px] font-semibold border-2 rounded transition-colors cursor-pointer",
                                           isFlagged
-                                            ? "bg-rust text-white border-rust"
+                                            ? "bg-rust text-white border-rust hover:opacity-85"
                                             : "bg-transparent text-text-dim border-line hover:border-rust hover:text-rust",
                                           isFlagBusy && "opacity-50 cursor-wait"
                                         )}
@@ -1366,7 +1377,9 @@ export default function RekapPage() {
                                         }}
                                         disabled={isFlagBusy}
                                       >
-                                        {isFlagged ? "✕ Buntu" : "Tandai"}
+                                        {isFlagged
+                                          ? "Buntu · cabut"
+                                          : "Tandai"}
                                       </button>
                                     )}
                                   </div>
