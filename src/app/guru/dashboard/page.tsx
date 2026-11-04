@@ -1068,21 +1068,44 @@ export default function RekapPage() {
                                   {targetSoal ? (
                                     <button
                                       className={cn(
-                                        "min-h-[44px] min-w-[44px] px-3 py-2 text-[12.5px] font-semibold border-2 rounded transition-colors",
-                                        isFlagged
-                                          ? "bg-rust text-white border-rust hover:opacity-85"
-                                          : "bg-transparent text-text-dim border-line hover:border-rust hover:text-rust",
+                                        "min-h-[44px] min-w-[44px] p-2 border-none bg-transparent cursor-pointer transition-opacity flex items-center justify-center",
                                         isBusy && "opacity-50 cursor-wait"
                                       )}
+                                      aria-label={
+                                        isFlagged
+                                          ? "Sudah ditandai, klik untuk cabut"
+                                          : "Tandai siswa perlu perhatian"
+                                      }
+                                      title={
+                                        isFlagged
+                                          ? "Sudah ditandai, klik untuk cabut"
+                                          : "Tandai siswa perlu perhatian"
+                                      }
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         toggleFlag(s.id, targetSoal.soalId);
                                       }}
                                       disabled={isBusy}
                                     >
-                                      {isFlagged
-                                        ? "Buntu · cabut"
-                                        : "Tandai buntu"}
+                                      <svg
+                                        width="20"
+                                        height="20"
+                                        viewBox="0 0 24 24"
+                                        fill={isFlagged ? "currentColor" : "none"}
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className={cn(
+                                          "transition-colors",
+                                          isFlagged
+                                            ? "text-amber"
+                                            : "text-text-dim hover:text-amber"
+                                        )}
+                                      >
+                                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                                        <line x1="4" y1="22" x2="4" y2="15" />
+                                      </svg>
                                     </button>
                                   ) : (
                                     <span className="text-[11px] text-text-dim">
@@ -1365,21 +1388,44 @@ export default function RekapPage() {
                                     {soal && (
                                       <button
                                         className={cn(
-                                          "min-h-[36px] px-2 py-1 text-[11px] font-semibold border-2 rounded transition-colors cursor-pointer",
-                                          isFlagged
-                                            ? "bg-rust text-white border-rust hover:opacity-85"
-                                            : "bg-transparent text-text-dim border-line hover:border-rust hover:text-rust",
+                                          "min-h-[36px] min-w-[36px] p-1 border-none bg-transparent cursor-pointer transition-opacity flex items-center justify-center",
                                           isFlagBusy && "opacity-50 cursor-wait"
                                         )}
+                                        aria-label={
+                                          isFlagged
+                                            ? "Sudah ditandai, klik untuk cabut"
+                                            : "Tandai siswa perlu perhatian"
+                                        }
+                                        title={
+                                          isFlagged
+                                            ? "Sudah ditandai, klik untuk cabut"
+                                            : "Tandai siswa perlu perhatian"
+                                        }
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           toggleFlag(s.id, soal.soalId);
                                         }}
                                         disabled={isFlagBusy}
                                       >
-                                        {isFlagged
-                                          ? "Buntu · cabut"
-                                          : "Tandai"}
+                                        <svg
+                                          width="16"
+                                          height="16"
+                                          viewBox="0 0 24 24"
+                                          fill={isFlagged ? "currentColor" : "none"}
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          className={cn(
+                                            "transition-colors",
+                                            isFlagged
+                                              ? "text-amber"
+                                              : "text-text-dim hover:text-amber"
+                                          )}
+                                        >
+                                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                                          <line x1="4" y1="22" x2="4" y2="15" />
+                                        </svg>
                                       </button>
                                     )}
                                   </div>
