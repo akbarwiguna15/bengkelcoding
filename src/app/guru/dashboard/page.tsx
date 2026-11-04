@@ -646,6 +646,7 @@ export default function RekapPage() {
   const fetchRekap = useCallback((kelasId: string) => {
     setRekapLoading(true);
     setRekapData(null);
+    setFlagged(new Set());
     fetch(`/api/kelas/${kelasId}/rekap`)
       .then((r) => r.json())
       .then((data) => {
@@ -653,6 +654,14 @@ export default function RekapPage() {
       })
       .catch(() => {})
       .finally(() => setRekapLoading(false));
+    fetch(`/api/teacher-flag?classId=${kelasId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.stuck)) {
+          setFlagged(new Set(data.stuck));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -900,12 +909,13 @@ export default function RekapPage() {
                 <div className="border border-line overflow-x-auto">
                   {/* ── Table header — per model ──────────────────── */}
                   {activeModel === "PROBLEM_SOLVING" && (
-                    <div className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                    <div className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr_1fr] min-w-[680px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
                       <span>Nama</span>
                       <span>Soal dikerjakan</span>
                       <span>Rata-rata nilai</span>
                       <span>Lama di soal</span>
                       <span>Status</span>
+                      <span>Tandai</span>
                     </div>
                   )}
                   {activeModel === "PBL" && (
@@ -950,9 +960,26 @@ export default function RekapPage() {
                         {activeModel === "PROBLEM_SOLVING" &&
                           (() => {
                             const ps = getPSStats(s);
+                            const psIndices = modelSoalIndices.PROBLEM_SOLVING;
+                            const activeSoalIdx = psIndices.find(
+                              (i) => s.soalStatus[i] === "proses"
+                            );
+                            const activeSoal =
+                              activeSoalIdx != null
+                                ? rekapData?.soalList[activeSoalIdx]
+                                : undefined;
+                            const flagKey = activeSoal
+                              ? `${s.id}::${activeSoal.soalId}`
+                              : "";
+                            const isFlagged = flagKey
+                              ? flagged.has(flagKey)
+                              : false;
+                            const isBusy = flagKey
+                              ? flagBusy.has(flagKey)
+                              : false;
                             return (
                               <div
-                                className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                                className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr_1fr] min-w-[680px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
                                 onClick={() =>
                                   setOpenDetail(isOpen ? null : s.id)
                                 }
@@ -1027,6 +1054,30 @@ export default function RekapPage() {
                                   )}
                                 >
                                   {s.status}
+                                </span>
+                                <span>
+                                  {activeSoal ? (
+                                    <button
+                                      className={cn(
+                                        "min-h-[44px] min-w-[44px] px-3 py-2 text-[12.5px] font-semibold border-2 rounded transition-colors",
+                                        isFlagged
+                                          ? "bg-rust text-white border-rust"
+                                          : "bg-transparent text-text-dim border-line hover:border-rust hover:text-rust",
+                                        isBusy && "opacity-50 cursor-wait"
+                                      )}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFlag(s.id, activeSoal.soalId);
+                                      }}
+                                      disabled={isBusy}
+                                    >
+                                      {isFlagged ? "✕ Buntu" : "Tandai buntu"}
+                                    </button>
+                                  ) : (
+                                    <span className="text-[11px] text-text-dim">
+                                      —
+                                    </span>
+                                  )}
                                 </span>
                               </div>
                             );
@@ -1271,7 +1322,7 @@ export default function RekapPage() {
                                 return (
                                   <div
                                     key={idx}
-                                    className="flex flex-col items-center gap-1"
+                                    className="flex flex-col items-center gap-1.5"
                                   >
                                     <div
                                       className={cn(
@@ -1303,23 +1354,19 @@ export default function RekapPage() {
                                     {soal && (
                                       <button
                                         className={cn(
-                                          "text-[10px] px-1.5 py-0.5 border cursor-pointer",
+                                          "min-h-[36px] px-2 py-1 text-[11px] font-semibold border-2 rounded transition-colors cursor-pointer",
                                           isFlagged
                                             ? "bg-rust text-white border-rust"
                                             : "bg-transparent text-text-dim border-line hover:border-rust hover:text-rust",
-                                          isFlagBusy && "opacity-50"
+                                          isFlagBusy && "opacity-50 cursor-wait"
                                         )}
-                                        title={
-                                          isFlagged
-                                            ? "Batal tandai buntu"
-                                            : "Tandai buntu"
-                                        }
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           toggleFlag(s.id, soal.soalId);
                                         }}
+                                        disabled={isFlagBusy}
                                       >
-                                        {isFlagged ? "⚑" : "⚐"}
+                                        {isFlagged ? "✕ Buntu" : "Tandai"}
                                       </button>
                                     )}
                                   </div>
