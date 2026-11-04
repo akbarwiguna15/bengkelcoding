@@ -714,6 +714,16 @@ export default function RekapPage() {
     const isCurrentlyFlagged = flagged.has(key);
     const value = isCurrentlyFlagged ? "ok" : "stuck";
 
+    if (value === "stuck") {
+      setFlagged((prev) => new Set(prev).add(key));
+    } else {
+      setFlagged((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+
     setFlagBusy((prev) => new Set(prev).add(key));
     fetch("/api/teacher-flag", {
       method: "POST",
@@ -725,7 +735,10 @@ export default function RekapPage() {
         value,
       }),
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         if (data.value === "stuck") {
           setFlagged((prev) => new Set(prev).add(key));
@@ -737,7 +750,17 @@ export default function RekapPage() {
           });
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (isCurrentlyFlagged) {
+          setFlagged((prev) => new Set(prev).add(key));
+        } else {
+          setFlagged((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        }
+      })
       .finally(() =>
         setFlagBusy((prev) => {
           const next = new Set(prev);
@@ -1067,8 +1090,9 @@ export default function RekapPage() {
                                 <span>
                                   {targetSoal ? (
                                     <button
+                                      type="button"
                                       className={cn(
-                                        "min-h-[44px] min-w-[44px] p-2 border-none bg-transparent cursor-pointer transition-opacity flex items-center justify-center",
+                                        "relative z-10 min-h-[44px] min-w-[44px] p-2 border-none bg-transparent cursor-pointer transition-opacity flex items-center justify-center",
                                         isBusy && "opacity-50 cursor-wait"
                                       )}
                                       aria-label={
@@ -1081,8 +1105,10 @@ export default function RekapPage() {
                                           ? "Sudah ditandai, klik untuk cabut"
                                           : "Tandai siswa perlu perhatian"
                                       }
+                                      onMouseDown={(e) => e.stopPropagation()}
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        e.preventDefault();
                                         toggleFlag(s.id, targetSoal.soalId);
                                       }}
                                       disabled={isBusy}
@@ -1097,7 +1123,7 @@ export default function RekapPage() {
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         className={cn(
-                                          "transition-colors",
+                                          "pointer-events-none transition-colors",
                                           isFlagged
                                             ? "text-amber"
                                             : "text-text-dim hover:text-amber"
@@ -1387,8 +1413,9 @@ export default function RekapPage() {
                                     </div>
                                     {soal && (
                                       <button
+                                        type="button"
                                         className={cn(
-                                          "min-h-[36px] min-w-[36px] p-1 border-none bg-transparent cursor-pointer transition-opacity flex items-center justify-center",
+                                          "relative z-10 min-h-[36px] min-w-[36px] p-1 border-none bg-transparent cursor-pointer transition-opacity flex items-center justify-center",
                                           isFlagBusy && "opacity-50 cursor-wait"
                                         )}
                                         aria-label={
@@ -1401,8 +1428,10 @@ export default function RekapPage() {
                                             ? "Sudah ditandai, klik untuk cabut"
                                             : "Tandai siswa perlu perhatian"
                                         }
+                                        onMouseDown={(e) => e.stopPropagation()}
                                         onClick={(e) => {
                                           e.stopPropagation();
+                                          e.preventDefault();
                                           toggleFlag(s.id, soal.soalId);
                                         }}
                                         disabled={isFlagBusy}
@@ -1417,7 +1446,7 @@ export default function RekapPage() {
                                           strokeLinecap="round"
                                           strokeLinejoin="round"
                                           className={cn(
-                                            "transition-colors",
+                                            "pointer-events-none transition-colors",
                                             isFlagged
                                               ? "text-amber"
                                               : "text-text-dim hover:text-amber"
