@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+
+/* ─── Feature flag ─────────────────────────────────────────────── */
+
+const ENABLE_AUTO_STUCK = false;
 
 /* ─── Types ──────────────────────────────────────────────────── */
 
@@ -17,7 +21,7 @@ interface PriorityData {
 }
 
 interface StudentRow {
-  id: number;
+  id: string;
   name: string;
   done: number;
   total: number;
@@ -25,24 +29,115 @@ interface StudentRow {
   status: "selesai" | "berjalan";
   soalStatus: ("benar" | "salah" | "proses" | "belum")[];
   hand: boolean;
+  autoStuck?: boolean;
   hp: PriorityData;
   live?: boolean;
   liveMin?: number;
-  offlineNote?: string;
-}
-
-interface HintItem {
-  text: string;
-  revealed: boolean;
-  response: "paham" | "lagi" | null;
 }
 
 interface HintPanelState {
+  studentId: string;
   studentName: string;
+  soalId: string;
   soalNum: number;
 }
 
-/* ─── Model configuration ──────────────────────────────────── */
+interface PblRow {
+  reached: number;
+  total: number;
+  lastApproved: string;
+  status: "berjalan" | "selesai" | "revisi";
+}
+
+interface TrfRow {
+  refleksiSent: number;
+  refleksiTotal: number;
+  penilaian: "menunggu" | "dinilai";
+  nilaiRubrik: number | null;
+}
+
+interface DlRow {
+  lapisan: string;
+  skor: (number | null)[];
+  total: number | null;
+}
+
+/* ─── API response types ─────────────────────────────────────── */
+
+interface ApiSoal {
+  soalId: string;
+  title: string;
+  learningModel: SoalModel;
+  difficulty: number;
+  estimatedMinutes: number | null;
+  dueAt: string | null;
+  testCaseCount: number;
+  milestones: { id: string; title: string; order: number }[];
+  rubricCriteria: {
+    id: string;
+    name: string;
+    maxScore: number;
+    order: number;
+  }[];
+}
+
+interface ApiSubmission {
+  soalId: string;
+  status: string | null;
+  testsPassed: number | null;
+  testsTotal: number | null;
+  autoGradeScore: number | null;
+  totalScore: number | null;
+  createdAt: string | null;
+  milestoneProgress: { milestoneId: string; status: string }[];
+  rubricGrades: { criterionId: string; score: number }[];
+}
+
+interface ApiStudent {
+  id: string;
+  name: string;
+  submissions: ApiSubmission[];
+  handRaised: boolean;
+  hintCount: number;
+  activeSoalId: string | null;
+  activityStatus: string | null;
+  stuckSince: string | null;
+  lastEventAt: string | null;
+  errorCounts: Record<string, number>;
+  submitCounts: Record<string, number>;
+}
+
+interface ApiErrorPattern {
+  conceptTagName: string;
+  soalTitle: string;
+  studentCount: number;
+  totalStudents: number;
+  pct: number;
+}
+
+interface RekapData {
+  kelas: { id: string; name: string };
+  soalList: ApiSoal[];
+  students: ApiStudent[];
+  errorPatterns: ApiErrorPattern[];
+}
+
+interface KelasItem {
+  id: string;
+  name: string;
+  _count: { members: number; assignments: number };
+}
+
+interface HintRecord {
+  id: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+  sender: { name: string };
+  receiver: { name: string };
+}
+
+/* ─── Model tab config ───────────────────────────────────────── */
 
 const MODEL_TABS: { id: SoalModel; label: string }[] = [
   { id: "PROBLEM_SOLVING", label: "Problem Solving" },
@@ -51,36 +146,10 @@ const MODEL_TABS: { id: SoalModel; label: string }[] = [
   { id: "DEEP_LEARNING", label: "Deep Learning" },
 ];
 
-const soalModels: SoalModel[] = [
-  "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PROBLEM_SOLVING", "PBL",
-  "PROBLEM_SOLVING", "PBL", "PROBLEM_SOLVING", "TRANSFORMATIF",
-  "PROBLEM_SOLVING", "DEEP_LEARNING",
-];
-
-const modelCounts: Record<SoalModel, number> = {
-  PROBLEM_SOLVING: 0, PBL: 0, TRANSFORMATIF: 0, DEEP_LEARNING: 0,
-};
-soalModels.forEach((m) => modelCounts[m]++);
-
-const modelSoalIndices: Record<SoalModel, number[]> = {
-  PROBLEM_SOLVING: [], PBL: [], TRANSFORMATIF: [], DEEP_LEARNING: [],
-};
-soalModels.forEach((m, i) => modelSoalIndices[m].push(i));
-
-function getInitialModel(): SoalModel {
-  const nonZero = MODEL_TABS.filter((t) => modelCounts[t.id] > 0);
-  if (nonZero.length === 1) return nonZero[0].id;
-  let best = nonZero[0];
-  for (const t of nonZero) {
-    if (modelCounts[t.id] > modelCounts[best.id]) best = t;
-  }
-  return best.id;
-}
-
-/* ─── PS helpers ─────────────────────────────────────────────── */
+/* ─── Priority helpers (preserved as-is) ────────────────────── */
 
 function calcPrio(s: StudentRow): number {
-  if (!s.hand || !s.hp) return 0;
+  if ((!s.hand && !s.autoStuck) || !s.hp) return 0;
   const p = s.hp;
   let sc = 0;
   sc += Math.min(p.repeat * 6, 30);
@@ -97,100 +166,14 @@ function calcPrio(s: StudentRow): number {
 }
 
 function prioTag(score: number): { label: string; color: string; bg: string } {
-  if (score >= 60) return { label: "Urgent", color: "text-rust", bg: "bg-rust-soft border-rust" };
-  if (score >= 35) return { label: "Tinggi", color: "text-amber", bg: "bg-amber-soft border-amber" };
+  if (score >= 60)
+    return { label: "Urgent", color: "text-rust", bg: "bg-rust-soft border-rust" };
+  if (score >= 35)
+    return { label: "Tinggi", color: "text-amber", bg: "bg-amber-soft border-amber" };
   return { label: "Sedang", color: "text-text-dim", bg: "bg-paper-dim border-line" };
 }
 
-function getPSStats(s: StudentRow) {
-  const indices = modelSoalIndices.PROBLEM_SOLVING;
-  const statuses = indices.map((i) => s.soalStatus[i]);
-  const done = statuses.filter((st) => st === "benar" || st === "salah").length;
-  const benar = statuses.filter((st) => st === "benar").length;
-  const avg = done > 0 ? Math.round((benar / done) * 100) : 0;
-  return { done, total: indices.length, avg };
-}
-
-/* ─── Demo data ──────────────────────────────────────────────── */
-
-const demoStudents: StudentRow[] = [
-  {
-    id: 1, name: "Ahmad Fauzan", done: 8, total: 10, avg: 82, status: "selesai",
-    soalStatus: ["benar","benar","benar","benar","benar","benar","salah","benar","belum","belum"],
-    hand: false, hp: { fail: 0, repeat: 0, df: "Menengah", helped: false, timeLeft: null },
-    offlineNote: "3 jawaban dikerjakan saat offline — baru tersinkron pukul 08:41.",
-  },
-  {
-    id: 2, name: "Bunga Amelia", done: 10, total: 10, avg: 94, status: "selesai",
-    soalStatus: ["benar","benar","benar","benar","benar","benar","benar","benar","salah","benar"],
-    hand: false, hp: { fail: 0, repeat: 0, df: "Menengah", helped: false, timeLeft: null },
-  },
-  {
-    id: 3, name: "Candra Wijaya", done: 5, total: 10, avg: 58, status: "berjalan",
-    soalStatus: ["benar","benar","benar","benar","proses","belum","belum","belum","belum","belum"],
-    hand: true, hp: { fail: 8, repeat: 5, df: "Menengah", helped: true, timeLeft: 14 },
-    live: true, liveMin: 56,
-  },
-  {
-    id: 4, name: "Dewi Lestari", done: 10, total: 10, avg: 88, status: "selesai",
-    soalStatus: ["benar","benar","benar","benar","salah","benar","benar","benar","benar","benar"],
-    hand: false, hp: { fail: 0, repeat: 0, df: "Menengah", helped: false, timeLeft: null },
-  },
-  {
-    id: 5, name: "Eko Prasetyo", done: 3, total: 10, avg: 41, status: "berjalan",
-    soalStatus: ["benar","salah","salah","proses","belum","belum","belum","belum","belum","belum"],
-    hand: true, hp: { fail: 3, repeat: 1, df: "Mudah", helped: false, timeLeft: 52 },
-    live: true, liveMin: 12,
-  },
-];
-
-const pblMilestones = ["Perencanaan", "Riset", "Wireframe", "Implementasi", "Presentasi"];
-
-const pblData: Record<number, {
-  reached: number;
-  total: number;
-  lastApproved: string;
-  status: "berjalan" | "selesai" | "revisi";
-}> = {
-  1: { reached: 4, total: 5, lastApproved: "Wireframe", status: "berjalan" },
-  2: { reached: 5, total: 5, lastApproved: "Presentasi", status: "selesai" },
-  3: { reached: 2, total: 5, lastApproved: "Riset", status: "berjalan" },
-  4: { reached: 5, total: 5, lastApproved: "Presentasi", status: "selesai" },
-  5: { reached: 1, total: 5, lastApproved: "Perencanaan", status: "revisi" },
-};
-
-const trfData: Record<number, {
-  refleksiSent: number;
-  refleksiTotal: number;
-  penilaian: "menunggu" | "dinilai";
-  nilaiRubrik: number | null;
-}> = {
-  1: { refleksiSent: 1, refleksiTotal: 1, penilaian: "dinilai", nilaiRubrik: 82 },
-  2: { refleksiSent: 1, refleksiTotal: 1, penilaian: "dinilai", nilaiRubrik: 91 },
-  3: { refleksiSent: 0, refleksiTotal: 1, penilaian: "menunggu", nilaiRubrik: null },
-  4: { refleksiSent: 1, refleksiTotal: 1, penilaian: "dinilai", nilaiRubrik: 87 },
-  5: { refleksiSent: 1, refleksiTotal: 1, penilaian: "menunggu", nilaiRubrik: null },
-};
-
-const dlLayers = ["Memahami", "Menganalisis", "Mengevaluasi", "Mencipta"];
-
-const dlData: Record<number, {
-  lapisan: string;
-  skor: (number | null)[];
-  total: number | null;
-}> = {
-  1: { lapisan: "Mengevaluasi", skor: [85, 78, 72, null], total: null },
-  2: { lapisan: "Mencipta", skor: [92, 88, 85, 90], total: 89 },
-  3: { lapisan: "Memahami", skor: [55, null, null, null], total: null },
-  4: { lapisan: "Mengevaluasi", skor: [90, 82, 78, null], total: null },
-  5: { lapisan: "Memahami", skor: [40, null, null, null], total: null },
-};
-
-const errorPatterns = [
-  { soal: "Soal 5 — Flexbox justify-content", salah: 12, total: 28, pct: 43, hint: "Banyak siswa menulis flex-start, bukan space-between." },
-  { soal: "Soal 9 — Event listener", salah: 8, total: 28, pct: 29, hint: "Salah menerapkan addEventListener — sering lupa parameter kedua." },
-  { soal: "Soal 7 — CSS Grid template", salah: 6, total: 28, pct: 21, hint: "Siswa keliru antara grid-template-columns dan grid-template-rows." },
-];
+/* ─── Soal status display ───────────────────────────────────── */
 
 const soalColors: Record<string, string> = {
   benar: "bg-pcb border-pcb text-white",
@@ -199,71 +182,343 @@ const soalColors: Record<string, string> = {
   belum: "bg-white border-line border-dashed text-text-dim",
 };
 
-const demoCodeLines = [
-  ".navbar {",
-  "  display: flex;",
-  "  justify-content: flex-start;",
-  "  align-items: center;",
-  "  gap: 10px;",
-  "  padding: 0 16px;",
-  "}",
-];
+/* ─── Data transformation ───────────────────────────────────── */
+
+function difficultyLabel(d: number): "Mudah" | "Menengah" | "Sulit" {
+  if (d <= 1) return "Mudah";
+  if (d <= 2) return "Menengah";
+  return "Sulit";
+}
+
+function soalStatusFromSub(sub: ApiSubmission): "benar" | "salah" | "proses" | "belum" {
+  if (!sub.status) return "belum";
+  if (sub.status === "IN_PROGRESS") return "proses";
+  if (sub.testsTotal != null && sub.testsTotal > 0) {
+    return sub.testsPassed === sub.testsTotal ? "benar" : "salah";
+  }
+  const score = sub.totalScore ?? sub.autoGradeScore;
+  if (score != null) return score >= 70 ? "benar" : "salah";
+  return sub.status === "SUBMITTED" ? "proses" : "belum";
+}
+
+function buildDashboardData(data: RekapData) {
+  const soalModels = data.soalList.map((s) => s.learningModel);
+
+  const modelCounts: Record<SoalModel, number> = {
+    PROBLEM_SOLVING: 0,
+    PBL: 0,
+    TRANSFORMATIF: 0,
+    DEEP_LEARNING: 0,
+  };
+  soalModels.forEach((m) => modelCounts[m]++);
+
+  const modelSoalIndices: Record<SoalModel, number[]> = {
+    PROBLEM_SOLVING: [],
+    PBL: [],
+    TRANSFORMATIF: [],
+    DEEP_LEARNING: [],
+  };
+  soalModels.forEach((m, i) => modelSoalIndices[m].push(i));
+
+  const pblData: Record<string, PblRow> = {};
+  const trfData: Record<string, TrfRow> = {};
+  const dlData: Record<string, DlRow> = {};
+
+  const students: StudentRow[] = data.students.map((apiSt) => {
+    const soalStatus = apiSt.submissions.map((sub) => soalStatusFromSub(sub));
+
+    const gradedSubs = apiSt.submissions.filter(
+      (sub) => sub.status === "SUBMITTED" || sub.status === "GRADED"
+    );
+    const scores = gradedSubs
+      .map((sub) => sub.totalScore ?? sub.autoGradeScore)
+      .filter((s): s is number => s != null);
+    const avg =
+      scores.length > 0
+        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+        : 0;
+
+    const done = gradedSubs.length;
+    const total = apiSt.submissions.length;
+    const allDone = total > 0 && done === total;
+
+    const activeSoalIdx = apiSt.activeSoalId
+      ? data.soalList.findIndex((s) => s.soalId === apiSt.activeSoalId)
+      : -1;
+    const activeSoal =
+      activeSoalIdx >= 0 ? data.soalList[activeSoalIdx] : null;
+
+    let timeLeft: number | null = null;
+    if (activeSoal?.estimatedMinutes && apiSt.lastEventAt) {
+      const elapsed = Math.floor(
+        (Date.now() - new Date(apiSt.lastEventAt).getTime()) / 60000
+      );
+      timeLeft = Math.max(0, activeSoal.estimatedMinutes - elapsed);
+    }
+
+    const activeSoalErrors = apiSt.activeSoalId
+      ? apiSt.errorCounts[apiSt.activeSoalId] ?? 0
+      : 0;
+    const activeSoalSubmits = apiSt.activeSoalId
+      ? apiSt.submitCounts[apiSt.activeSoalId] ?? 0
+      : 0;
+
+    const isLive =
+      apiSt.activityStatus != null &&
+      apiSt.activityStatus !== "IDLE" &&
+      apiSt.activityStatus !== "SUBMITTED";
+    let liveMin: number | undefined;
+    if (isLive && apiSt.lastEventAt) {
+      liveMin = Math.floor(
+        (Date.now() - new Date(apiSt.lastEventAt).getTime()) / 60000
+      );
+    }
+
+    const row: StudentRow = {
+      id: apiSt.id,
+      name: apiSt.name,
+      done,
+      total,
+      avg,
+      status: allDone ? "selesai" : "berjalan",
+      soalStatus,
+      hand: apiSt.handRaised,
+      autoStuck: ENABLE_AUTO_STUCK
+        ? apiSt.activityStatus === "STUCK"
+        : undefined,
+      hp: {
+        fail: activeSoalSubmits,
+        repeat: activeSoalErrors,
+        df: activeSoal ? difficultyLabel(activeSoal.difficulty) : "Menengah",
+        helped: apiSt.hintCount > 0,
+        timeLeft,
+      },
+      live: isLive || undefined,
+      liveMin,
+    };
+
+    // --- PBL data ---
+    const pblIndices = modelSoalIndices.PBL;
+    if (pblIndices.length > 0) {
+      let totalMilestones = 0;
+      let approvedMilestones = 0;
+      let lastApprovedName = "—";
+      let hasRevision = false;
+      let allPblDone = true;
+
+      for (const idx of pblIndices) {
+        const soal = data.soalList[idx];
+        const sub = apiSt.submissions[idx];
+        totalMilestones += soal.milestones.length;
+
+        if (!sub.status || sub.status === "IN_PROGRESS") allPblDone = false;
+
+        const progressMap = new Map(
+          sub.milestoneProgress.map((mp) => [mp.milestoneId, mp.status])
+        );
+        for (const ms of soal.milestones) {
+          const mStatus = progressMap.get(ms.id);
+          if (mStatus === "APPROVED") {
+            approvedMilestones++;
+            lastApprovedName = ms.title;
+          }
+          if (mStatus === "REVISION_NEEDED") hasRevision = true;
+        }
+      }
+
+      pblData[apiSt.id] = {
+        reached: approvedMilestones,
+        total: totalMilestones,
+        lastApproved: lastApprovedName,
+        status: allPblDone
+          ? "selesai"
+          : hasRevision
+            ? "revisi"
+            : "berjalan",
+      };
+    }
+
+    // --- TRF data ---
+    const trfIndices = modelSoalIndices.TRANSFORMATIF;
+    if (trfIndices.length > 0) {
+      let refleksiSent = 0;
+      let totalRubrikScore = 0;
+      let totalMaxScore = 0;
+      let hasGrade = false;
+
+      for (const idx of trfIndices) {
+        const soal = data.soalList[idx];
+        const sub = apiSt.submissions[idx];
+        if (sub.status === "SUBMITTED" || sub.status === "GRADED")
+          refleksiSent++;
+
+        for (const crit of soal.rubricCriteria) {
+          totalMaxScore += crit.maxScore;
+          const grade = sub.rubricGrades.find(
+            (g) => g.criterionId === crit.id
+          );
+          if (grade) {
+            totalRubrikScore += grade.score;
+            hasGrade = true;
+          }
+        }
+      }
+
+      const nilaiRubrik =
+        hasGrade && totalMaxScore > 0
+          ? Math.round((totalRubrikScore / totalMaxScore) * 100)
+          : null;
+
+      trfData[apiSt.id] = {
+        refleksiSent,
+        refleksiTotal: trfIndices.length,
+        penilaian: hasGrade ? "dinilai" : "menunggu",
+        nilaiRubrik,
+      };
+    }
+
+    // --- DL data ---
+    const dlIndices = modelSoalIndices.DEEP_LEARNING;
+    if (dlIndices.length > 0) {
+      const layerScores: (number | null)[] = [];
+      let highestLayerName = "—";
+
+      for (const idx of dlIndices) {
+        const soal = data.soalList[idx];
+        const sub = apiSt.submissions[idx];
+
+        if (soal.rubricCriteria.length > 0) {
+          for (const crit of soal.rubricCriteria) {
+            const grade = sub.rubricGrades.find(
+              (g) => g.criterionId === crit.id
+            );
+            const score =
+              grade && crit.maxScore > 0
+                ? Math.round((grade.score / crit.maxScore) * 100)
+                : null;
+            layerScores.push(score);
+            if (score != null) highestLayerName = crit.name;
+          }
+        } else {
+          const score = sub.totalScore ?? sub.autoGradeScore;
+          layerScores.push(score != null ? Math.round(score) : null);
+          if (score != null) highestLayerName = soal.title;
+        }
+      }
+
+      const validScores = layerScores.filter(
+        (s): s is number => s != null
+      );
+      const dlTotal =
+        validScores.length > 0
+          ? Math.round(
+              validScores.reduce((a, b) => a + b, 0) / validScores.length
+            )
+          : null;
+
+      dlData[apiSt.id] = {
+        lapisan: highestLayerName,
+        skor: layerScores,
+        total: dlTotal,
+      };
+    }
+
+    return row;
+  });
+
+  // Derive DL layer names from rubric criteria or soal titles
+  const dlLayerNames: string[] = [];
+  for (const idx of modelSoalIndices.DEEP_LEARNING) {
+    const soal = data.soalList[idx];
+    if (soal.rubricCriteria.length > 0) {
+      for (const crit of soal.rubricCriteria) {
+        if (!dlLayerNames.includes(crit.name)) dlLayerNames.push(crit.name);
+      }
+    } else {
+      if (!dlLayerNames.includes(soal.title))
+        dlLayerNames.push(soal.title);
+    }
+  }
+
+  // PBL milestone names
+  const pblMilestoneNames: string[] = [];
+  for (const idx of modelSoalIndices.PBL) {
+    for (const ms of data.soalList[idx].milestones) {
+      if (!pblMilestoneNames.includes(ms.title))
+        pblMilestoneNames.push(ms.title);
+    }
+  }
+
+  return {
+    students,
+    soalModels,
+    modelCounts,
+    modelSoalIndices,
+    pblData,
+    trfData,
+    dlData,
+    pblMilestones: pblMilestoneNames,
+    dlLayers: dlLayerNames,
+  };
+}
 
 /* ─── HintPanel ──────────────────────────────────────────────── */
 
 function HintPanel({
+  studentId,
   studentName,
+  soalId,
   soalNum,
   onClose,
 }: {
+  studentId: string;
   studentName: string;
+  soalId: string;
   soalNum: number;
   onClose: () => void;
 }) {
-  const [spotLines, setSpotLines] = useState<number[]>([]);
-  const [hints, setHints] = useState<HintItem[]>([
-    { text: "Perhatikan properti justify-content. Nilai apa yang membuat item tersebar rata?", revealed: true, response: "paham" },
-    { text: "Coba baca dokumentasi tentang space-between vs flex-start.", revealed: false, response: null },
-  ]);
+  const [hints, setHints] = useState<HintRecord[]>([]);
   const [hintDraft, setHintDraft] = useState("");
+  const [sending, setSending] = useState(false);
 
-  function toggleSpot(line: number) {
-    setSpotLines((prev) =>
-      prev.includes(line) ? prev.filter((l) => l !== line) : [...prev, line]
-    );
-  }
+  useEffect(() => {
+    fetch(`/api/hints?soalId=${soalId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const forStudent = data.filter(
+            (h: HintRecord & { receiverId?: string }) =>
+              h.receiver?.name === studentName ||
+              (h as { receiverId?: string }).receiverId === studentId
+          );
+          setHints(forStudent);
+        }
+      })
+      .catch(() => {});
+  }, [soalId, studentName, studentId]);
 
   function addHint() {
     const t = hintDraft.trim();
-    if (!t) return;
-    setHints((prev) => [...prev, { text: t, revealed: false, response: null }]);
-    setHintDraft("");
-  }
-
-  function demoReveal() {
-    setHints((prev) => {
-      const next = [...prev];
-      for (let i = 0; i < next.length; i++) {
-        if (!next[i].revealed) {
-          next[i] = { ...next[i], revealed: true };
-          break;
+    if (!t || sending) return;
+    setSending(true);
+    fetch("/api/hints", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        receiverId: studentId,
+        soalId,
+        message: t,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.id) {
+          setHints((prev) => [data, ...prev]);
+          setHintDraft("");
         }
-      }
-      return next;
-    });
-  }
-
-  function demoRespond() {
-    setHints((prev) => {
-      const next = [...prev];
-      for (let i = 0; i < next.length; i++) {
-        if (next[i].revealed && !next[i].response) {
-          next[i] = { ...next[i], response: Math.random() > 0.3 ? "paham" : "lagi" };
-          break;
-        }
-      }
-      return next;
-    });
+      })
+      .catch(() => {})
+      .finally(() => setSending(false));
   }
 
   return (
@@ -288,93 +543,35 @@ function HintPanel({
         </div>
 
         <div className="text-[12.5px] text-text-dim mb-3.5">
-          Soal {soalNum} — Navigasi Flexbox &middot;{" "}
-          <span className="font-mono text-[11px] bg-amber-soft text-amber px-1.5 py-px">
-            sedang dikerjakan
-          </span>
+          Soal {soalNum}
         </div>
 
-        <div className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5">
-          Kode siswa saat ini{" "}
-          <span className="text-[10px] font-normal text-text-dim">
-            (klik baris untuk sorot)
-          </span>
-        </div>
+        <div className="text-[12px] font-semibold mb-2">Petunjuk terkirim</div>
 
-        <div className="border border-line bg-ink mb-4">
-          {demoCodeLines.map((line, i) => {
-            const isSpot = spotLines.includes(i);
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "flex items-baseline px-4 py-[3px] cursor-pointer transition-colors duration-150",
-                  isSpot ? "bg-amber/20" : "hover:bg-white/5"
-                )}
-                onClick={() => toggleSpot(i)}
-              >
-                <span className="w-6 text-right mr-3 text-[11px] text-text-dim/50 select-none font-mono">
-                  {i + 1}
-                </span>
-                <span className="font-mono text-[12.5px] text-paper">
-                  {line}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        {spotLines.length > 0 && (
-          <div className="text-[11.5px] text-amber mb-3.5 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber inline-block" />
-            {spotLines.length} baris disorot — siswa melihat highlight di editor mereka
+        {hints.length === 0 ? (
+          <div className="text-[12.5px] text-text-dim mb-3.5 py-4 text-center border border-dashed border-line">
+            Belum ada petunjuk untuk siswa ini pada soal ini.
           </div>
-        )}
-
-        <div className="text-[12px] font-semibold mb-2">Petunjuk bertahap</div>
-        <div className="text-[11.5px] text-text-dim mb-2.5">
-          Siswa membuka hint satu per satu. Hint berikutnya terkunci sampai
-          sebelumnya ditandai.
-        </div>
-
-        <div className="flex flex-col gap-2 mb-3.5">
-          {hints.map((h, i) => {
-            const locked = i > 0 && !hints[i - 1].revealed;
-            return (
+        ) : (
+          <div className="flex flex-col gap-2 mb-3.5">
+            {hints.map((h, i) => (
               <div
-                key={i}
-                className={cn(
-                  "flex gap-2.5 p-3 border border-line text-[12.5px]",
-                  locked ? "opacity-40 bg-paper-dim" : "bg-white"
-                )}
+                key={h.id || i}
+                className="flex gap-2.5 p-3 border border-line text-[12.5px] bg-white"
               >
                 <span className="w-6 h-6 rounded-full bg-pcb text-white text-[11px] font-bold flex items-center justify-center flex-none">
                   {i + 1}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="leading-relaxed">{h.text}</div>
-                  {h.response && (
-                    <div className="mt-1.5 text-[12px] px-2 py-1 border border-line bg-paper-dim text-text-dim inline-block">
-                      {h.response === "paham"
-                        ? "✓ Siswa: Sudah paham"
-                        : "❓ Siswa: Butuh lagi"}
-                    </div>
-                  )}
-                  {!h.response && h.revealed && (
-                    <div className="mt-1.5 text-[11px] text-text-dim italic">
-                      Dibuka siswa — menunggu respon...
-                    </div>
-                  )}
-                  {!h.response && !h.revealed && !locked && (
-                    <div className="mt-1.5 text-[11px] text-text-dim">
-                      Belum dibuka
-                    </div>
-                  )}
+                  <div className="leading-relaxed">{h.message}</div>
+                  <div className="mt-1 text-[11px] text-text-dim">
+                    {h.readAt ? "✓ Sudah dibaca" : "Belum dibaca"}
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex gap-2 items-end mb-4">
           <div className="flex-1">
@@ -393,25 +590,14 @@ function HintPanel({
             />
           </div>
           <button
-            className="px-4 py-2 bg-pcb text-white text-[13px] font-medium whitespace-nowrap hover:opacity-90"
+            className={cn(
+              "px-4 py-2 bg-pcb text-white text-[13px] font-medium whitespace-nowrap",
+              sending ? "opacity-50" : "hover:opacity-90"
+            )}
             onClick={addHint}
+            disabled={sending}
           >
             Kirim hint
-          </button>
-        </div>
-
-        <div className="border-t border-line pt-3 text-[11.5px] text-text-dim flex gap-3 flex-wrap">
-          <button
-            className="px-2.5 py-1 border border-line bg-white text-text-primary text-[11px] hover:bg-paper-dim"
-            onClick={demoReveal}
-          >
-            Demo: siswa buka hint
-          </button>
-          <button
-            className="px-2.5 py-1 border border-line bg-white text-text-primary text-[11px] hover:bg-paper-dim"
-            onClick={demoRespond}
-          >
-            Demo: siswa respon
           </button>
         </div>
       </div>
@@ -419,17 +605,129 @@ function HintPanel({
   );
 }
 
+/* ─── Empty state ────────────────────────────────────────────── */
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="py-12 text-center text-[13.5px] text-text-dim border border-dashed border-line">
+      {message}
+    </div>
+  );
+}
+
 /* ─── Main page ──────────────────────────────────────────────── */
 
 export default function RekapPage() {
-  const [activeModel, setActiveModel] = useState<SoalModel>(getInitialModel);
-  const [openDetail, setOpenDetail] = useState<number | null>(null);
+  const [kelasList, setKelasList] = useState<KelasItem[]>([]);
+  const [selectedKelasId, setSelectedKelasId] = useState<string | null>(null);
+  const [rekapData, setRekapData] = useState<RekapData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [rekapLoading, setRekapLoading] = useState(false);
+
+  const [activeModel, setActiveModel] = useState<SoalModel>("PROBLEM_SOLVING");
+  const [openDetail, setOpenDetail] = useState<string | null>(null);
   const [hintPanel, setHintPanel] = useState<HintPanelState | null>(null);
+
+  useEffect(() => {
+    fetch("/api/kelas")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setKelasList(data);
+          if (data.length > 0) setSelectedKelasId(data[0].id);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const fetchRekap = useCallback((kelasId: string) => {
+    setRekapLoading(true);
+    setRekapData(null);
+    fetch(`/api/kelas/${kelasId}/rekap`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.kelas) setRekapData(data);
+      })
+      .catch(() => {})
+      .finally(() => setRekapLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (selectedKelasId) fetchRekap(selectedKelasId);
+  }, [selectedKelasId, fetchRekap]);
+
+  const dashboard = rekapData ? buildDashboardData(rekapData) : null;
+
+  const modelCounts = dashboard?.modelCounts ?? {
+    PROBLEM_SOLVING: 0,
+    PBL: 0,
+    TRANSFORMATIF: 0,
+    DEEP_LEARNING: 0,
+  };
+  const modelSoalIndices = dashboard?.modelSoalIndices ?? {
+    PROBLEM_SOLVING: [],
+    PBL: [],
+    TRANSFORMATIF: [],
+    DEEP_LEARNING: [],
+  };
+  const students = dashboard?.students ?? [];
+  const pblMilestones = dashboard?.pblMilestones ?? [];
+  const dlLayers = dashboard?.dlLayers ?? [];
+  const pblData = dashboard?.pblData ?? {};
+  const trfData = dashboard?.trfData ?? {};
+  const dlData = dashboard?.dlData ?? {};
+  const errorPatterns = rekapData?.errorPatterns ?? [];
+
+  useEffect(() => {
+    if (!dashboard) return;
+    const nonZero = MODEL_TABS.filter((t) => modelCounts[t.id] > 0);
+    if (nonZero.length === 0) return;
+    if (modelCounts[activeModel] > 0) return;
+    let best = nonZero[0];
+    for (const t of nonZero) {
+      if (modelCounts[t.id] > modelCounts[best.id]) best = t;
+    }
+    setActiveModel(best.id);
+  }, [dashboard, modelCounts, activeModel]);
 
   function handleModelChange(model: SoalModel) {
     if (modelCounts[model] === 0) return;
     setActiveModel(model);
     setOpenDetail(null);
+  }
+
+  function getPSStats(s: StudentRow) {
+    const indices = modelSoalIndices.PROBLEM_SOLVING;
+    const statuses = indices.map((i) => s.soalStatus[i]);
+    const done = statuses.filter(
+      (st) => st === "benar" || st === "salah"
+    ).length;
+
+    // Single source of truth: avg from Submission scores, not pass rate
+    const subs = rekapData
+      ? rekapData.students
+          .find((st) => st.id === s.id)
+          ?.submissions.filter(
+            (_, i) =>
+              indices.includes(i) &&
+              (rekapData.students
+                .find((st) => st.id === s.id)
+                ?.submissions[i]?.status === "SUBMITTED" ||
+                rekapData.students
+                  .find((st) => st.id === s.id)
+                  ?.submissions[i]?.status === "GRADED")
+          ) ?? []
+      : [];
+    const scores = subs
+      .map((sub) => sub.totalScore ?? sub.autoGradeScore)
+      .filter((sc): sc is number => sc != null);
+    const avg =
+      scores.length > 0
+        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+        : 0;
+
+    return { done, total: indices.length, avg };
   }
 
   const innerTabs =
@@ -440,546 +738,742 @@ export default function RekapPage() {
           { id: "pola", label: "Pola Kesalahan Kelas" },
         ];
 
+  const selectedKelas = kelasList.find((k) => k.id === selectedKelasId);
+
+  // --- Loading state ---
+  if (loading) {
+    return (
+      <div className="animate-fade-in">
+        <h1 className="text-[20px] font-semibold mb-1">Rekap nilai siswa</h1>
+        <div className="py-16 text-center text-[13.5px] text-text-dim">
+          Memuat data kelas...
+        </div>
+      </div>
+    );
+  }
+
+  // --- No classes ---
+  if (kelasList.length === 0) {
+    return (
+      <div className="animate-fade-in">
+        <h1 className="text-[20px] font-semibold mb-1">Rekap nilai siswa</h1>
+        <EmptyState message="Belum ada kelas. Buat kelas terlebih dahulu di menu Kelola Kelas." />
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-in">
       <h1 className="text-[20px] font-semibold mb-1">Rekap nilai siswa</h1>
-      <p className="text-[13.5px] text-text-dim mb-5">
-        Kelas X RPL 2 — Materi: HTML dan CSS
-      </p>
 
-      {/* ── Model selector tabs ────────────────────────────────── */}
-      <div className="flex gap-1 mb-5 border-b border-line overflow-x-auto">
-        {MODEL_TABS.map((tab) => {
-          const count = modelCounts[tab.id];
-          const disabled = count === 0;
-          const isActive = activeModel === tab.id;
-          return (
-            <button
-              key={tab.id}
-              disabled={disabled}
-              onClick={() => handleModelChange(tab.id)}
-              className={cn(
-                "font-sans text-[13px] font-medium bg-transparent border-none pb-2.5 pt-2.5 mr-3 whitespace-nowrap",
-                "border-b-2 transition-colors",
-                disabled
-                  ? "text-text-dim/40 border-b-transparent cursor-not-allowed"
-                  : isActive
-                    ? "text-text-primary font-semibold border-b-copper cursor-pointer"
-                    : "text-text-dim border-b-transparent cursor-pointer hover:text-text-primary"
-              )}
-            >
-              {tab.label}{" "}
-              <span
-                className={cn(
-                  "font-mono text-[12px]",
-                  disabled ? "text-text-dim/30" : isActive ? "text-copper" : "text-text-dim"
-                )}
-              >
-                ({count})
-              </span>
-            </button>
-          );
-        })}
+      {/* ── Kelas selector ──────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-5">
+        <select
+          value={selectedKelasId ?? ""}
+          onChange={(e) => {
+            setSelectedKelasId(e.target.value);
+            setOpenDetail(null);
+          }}
+          className="border border-line bg-white px-3 py-1.5 text-[13.5px] text-text-primary"
+        >
+          {kelasList.map((k) => (
+            <option key={k.id} value={k.id}>
+              {k.name}
+            </option>
+          ))}
+        </select>
+        {selectedKelas && (
+          <span className="text-[13.5px] text-text-dim">
+            {selectedKelas._count.members} siswa &middot;{" "}
+            {selectedKelas._count.assignments} soal
+          </span>
+        )}
       </div>
 
-      {/* ── Inner tabs: Per Siswa / Pola Kesalahan ─────────────── */}
-      <Tabs key={activeModel} tabs={innerTabs}>
-        {(innerTab) =>
-          innerTab === "persiswa" ? (
-            <div className="border border-line overflow-x-auto">
-              {/* ── Table header — per model ──────────────────── */}
-              {activeModel === "PROBLEM_SOLVING" && (
-                <div className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
-                  <span>Nama</span>
-                  <span>Soal dikerjakan</span>
-                  <span>Rata-rata nilai</span>
-                  <span>Lama di soal</span>
-                  <span>Status</span>
-                </div>
-              )}
-              {activeModel === "PBL" && (
-                <div className="grid grid-cols-[2fr_1fr_1.5fr_.8fr] min-w-[520px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
-                  <span>Nama</span>
-                  <span>Tahap tercapai</span>
-                  <span>Terakhir disetujui</span>
-                  <span>Status</span>
-                </div>
-              )}
-              {activeModel === "TRANSFORMATIF" && (
-                <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr] min-w-[520px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
-                  <span>Nama</span>
-                  <span>Refleksi terkirim</span>
-                  <span>Status penilaian</span>
-                  <span>Nilai rubrik</span>
-                </div>
-              )}
-              {activeModel === "DEEP_LEARNING" && (
-                <div className="grid grid-cols-[2fr_1.2fr_2fr_.6fr] min-w-[580px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
-                  <span>Nama</span>
-                  <span>Lapisan tercapai</span>
-                  <span>Skor per lapisan</span>
-                  <span>Total</span>
-                </div>
-              )}
+      {/* ── Rekap loading ───────────────────────────────────────── */}
+      {rekapLoading && (
+        <div className="py-16 text-center text-[13.5px] text-text-dim">
+          Memuat rekap...
+        </div>
+      )}
 
-              {/* ── Student rows ──────────────────────────────── */}
-              {demoStudents.map((s) => {
-                const isOpen = openDetail === s.id;
-                const prio = s.hand ? calcPrio(s) : 0;
-                const pt = s.hand ? prioTag(prio) : null;
+      {/* ── No soal assigned ────────────────────────────────────── */}
+      {!rekapLoading && rekapData && rekapData.soalList.length === 0 && (
+        <EmptyState message="Belum ada soal yang ditugaskan ke kelas ini." />
+      )}
 
-                return (
-                  <div key={s.id} className="border-b border-line">
-                    {/* ── PS row ──────────────────────────────── */}
-                    {activeModel === "PROBLEM_SOLVING" &&
-                      (() => {
-                        const ps = getPSStats(s);
-                        return (
-                          <div
-                            className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
-                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              {s.name}
-                              {s.hand && (
-                                <span className="text-[14px]">&#9995;</span>
-                              )}
-                              {s.hand && pt && (
-                                <span
-                                  className={cn(
-                                    "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
-                                    pt.bg,
-                                    pt.color
-                                  )}
-                                >
-                                  {pt.label}
-                                </span>
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[11px] text-text-dim transition-transform",
-                                  isOpen && "rotate-90"
-                                )}
-                              >
-                                &#9656;
-                              </span>
-                            </span>
-                            <span className="font-mono text-[13px]">
-                              {ps.done}/{ps.total}
-                            </span>
-                            <span className="flex items-center gap-2">
-                              <span className="inline-block w-[90px] h-2 bg-paper-dim rounded overflow-hidden">
-                                <span
-                                  className="block h-full bg-pcb rounded"
-                                  style={{ width: `${Math.round(ps.avg * 0.9)}%` }}
-                                />
-                              </span>
-                              <span className="font-mono text-[13px] font-medium">
-                                {ps.avg}
-                              </span>
-                            </span>
-                            <span
-                              className={cn(
-                                "font-mono text-[12.5px]",
-                                s.hp.timeLeft != null && s.hp.timeLeft <= 15
-                                  ? "text-rust"
-                                  : "text-text-dim"
-                              )}
-                            >
-                              {s.hp.timeLeft != null ? `${s.hp.timeLeft}m` : "—"}
-                            </span>
-                            <span
-                              className={cn(
-                                "text-[12.5px] font-mono",
-                                s.status === "selesai" ? "text-pcb" : "text-amber"
-                              )}
-                            >
-                              {s.status}
-                            </span>
-                          </div>
-                        );
-                      })()}
+      {/* ── No students ─────────────────────────────────────────── */}
+      {!rekapLoading &&
+        rekapData &&
+        rekapData.soalList.length > 0 &&
+        students.length === 0 && (
+          <EmptyState message="Belum ada siswa yang bergabung di kelas ini." />
+        )}
 
-                    {/* ── PBL row ─────────────────────────────── */}
-                    {activeModel === "PBL" &&
-                      (() => {
-                        const d = pblData[s.id];
-                        return (
-                          <div
-                            className="grid grid-cols-[2fr_1fr_1.5fr_.8fr] min-w-[520px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
-                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              {s.name}
-                              {s.hand && (
-                                <span className="text-[14px]">&#9995;</span>
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[11px] text-text-dim transition-transform",
-                                  isOpen && "rotate-90"
-                                )}
-                              >
-                                &#9656;
-                              </span>
-                            </span>
-                            <span className="font-mono text-[13px]">
-                              {d.reached}/{d.total}
-                            </span>
-                            <span className="text-[13px]">{d.lastApproved}</span>
-                            <span
-                              className={cn(
-                                "text-[12.5px] font-mono",
-                                d.status === "selesai"
-                                  ? "text-pcb"
-                                  : d.status === "revisi"
-                                    ? "text-rust"
-                                    : "text-amber"
-                              )}
-                            >
-                              {d.status}
-                            </span>
-                          </div>
-                        );
-                      })()}
+      {/* ── Dashboard content ───────────────────────────────────── */}
+      {!rekapLoading && rekapData && students.length > 0 && (
+        <>
+          {/* ── Model selector tabs ──────────────────────────────── */}
+          <div className="flex gap-1 mb-5 border-b border-line overflow-x-auto">
+            {MODEL_TABS.map((tab) => {
+              const count = modelCounts[tab.id];
+              const disabled = count === 0;
+              const isActive = activeModel === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  disabled={disabled}
+                  onClick={() => handleModelChange(tab.id)}
+                  className={cn(
+                    "font-sans text-[13px] font-medium bg-transparent border-none pb-2.5 pt-2.5 mr-3 whitespace-nowrap",
+                    "border-b-2 transition-colors",
+                    disabled
+                      ? "text-text-dim/40 border-b-transparent cursor-not-allowed"
+                      : isActive
+                        ? "text-text-primary font-semibold border-b-copper cursor-pointer"
+                        : "text-text-dim border-b-transparent cursor-pointer hover:text-text-primary"
+                  )}
+                >
+                  {tab.label}{" "}
+                  <span
+                    className={cn(
+                      "font-mono text-[12px]",
+                      disabled
+                        ? "text-text-dim/30"
+                        : isActive
+                          ? "text-copper"
+                          : "text-text-dim"
+                    )}
+                  >
+                    ({count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-                    {/* ── TRF row ─────────────────────────────── */}
-                    {activeModel === "TRANSFORMATIF" &&
-                      (() => {
-                        const d = trfData[s.id];
-                        return (
-                          <div
-                            className="grid grid-cols-[2fr_1fr_1.2fr_1fr] min-w-[520px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
-                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              {s.name}
-                              {s.hand && (
-                                <span className="text-[14px]">&#9995;</span>
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[11px] text-text-dim transition-transform",
-                                  isOpen && "rotate-90"
-                                )}
-                              >
-                                &#9656;
-                              </span>
-                            </span>
-                            <span className="font-mono text-[13px]">
-                              {d.refleksiSent}/{d.refleksiTotal}
-                            </span>
-                            <span
-                              className={cn(
-                                "text-[12.5px] font-mono",
-                                d.penilaian === "dinilai" ? "text-pcb" : "text-amber"
-                              )}
-                            >
-                              {d.penilaian}
-                            </span>
-                            <span className="font-mono text-[13px] font-medium">
-                              {d.nilaiRubrik != null ? d.nilaiRubrik : "—"}
-                            </span>
-                          </div>
-                        );
-                      })()}
+          {/* ── Inner tabs: Per Siswa / Pola Kesalahan ────────────── */}
+          <Tabs key={activeModel} tabs={innerTabs}>
+            {(innerTab) =>
+              innerTab === "persiswa" ? (
+                <div className="border border-line overflow-x-auto">
+                  {/* ── Table header — per model ──────────────────── */}
+                  {activeModel === "PROBLEM_SOLVING" && (
+                    <div className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                      <span>Nama</span>
+                      <span>Soal dikerjakan</span>
+                      <span>Rata-rata nilai</span>
+                      <span>Lama di soal</span>
+                      <span>Status</span>
+                    </div>
+                  )}
+                  {activeModel === "PBL" && (
+                    <div className="grid grid-cols-[2fr_1fr_1.5fr_.8fr] min-w-[520px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                      <span>Nama</span>
+                      <span>Tahap tercapai</span>
+                      <span>Terakhir disetujui</span>
+                      <span>Status</span>
+                    </div>
+                  )}
+                  {activeModel === "TRANSFORMATIF" && (
+                    <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr] min-w-[520px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                      <span>Nama</span>
+                      <span>Refleksi terkirim</span>
+                      <span>Status penilaian</span>
+                      <span>Nilai rubrik</span>
+                    </div>
+                  )}
+                  {activeModel === "DEEP_LEARNING" && (
+                    <div className="grid grid-cols-[2fr_1.2fr_2fr_.6fr] min-w-[580px] px-4 py-2.5 text-[11px] uppercase tracking-widest text-text-dim font-semibold bg-paper-dim border-b border-line">
+                      <span>Nama</span>
+                      <span>Lapisan tercapai</span>
+                      <span>Skor per lapisan</span>
+                      <span>Total</span>
+                    </div>
+                  )}
 
-                    {/* ── DL row ──────────────────────────────── */}
-                    {activeModel === "DEEP_LEARNING" &&
-                      (() => {
-                        const d = dlData[s.id];
-                        return (
-                          <div
-                            className="grid grid-cols-[2fr_1.2fr_2fr_.6fr] min-w-[580px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
-                            onClick={() => setOpenDetail(isOpen ? null : s.id)}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              {s.name}
-                              {s.hand && (
-                                <span className="text-[14px]">&#9995;</span>
-                              )}
-                              <span
-                                className={cn(
-                                  "text-[11px] text-text-dim transition-transform",
-                                  isOpen && "rotate-90"
-                                )}
-                              >
-                                &#9656;
-                              </span>
-                            </span>
-                            <span className="text-[13px]">{d.lapisan}</span>
-                            <span className="flex gap-1.5 font-mono text-[12px]">
-                              {d.skor.map((v, i) => (
-                                <span
-                                  key={i}
-                                  className={cn(
-                                    "px-1.5 py-0.5 border",
-                                    v != null
-                                      ? "border-line bg-white"
-                                      : "border-transparent text-text-dim"
-                                  )}
-                                >
-                                  {v != null ? v : "—"}
-                                </span>
-                              ))}
-                            </span>
-                            <span className="font-mono text-[13px] font-medium">
-                              {d.total != null ? d.total : "—"}
-                            </span>
-                          </div>
-                        );
-                      })()}
+                  {/* ── Student rows ──────────────────────────────── */}
+                  {students.length === 0 && (
+                    <div className="px-4 py-8 text-center text-[13px] text-text-dim">
+                      Belum ada data siswa.
+                    </div>
+                  )}
+                  {students.map((s) => {
+                    const isOpen = openDetail === s.id;
+                    const prio = calcPrio(s);
+                    const pt = prio > 0 ? prioTag(prio) : null;
 
-                    {/* ── PS detail panel ─────────────────────── */}
-                    {isOpen && activeModel === "PROBLEM_SOLVING" && (
-                      <div className="bg-paper-dim p-4 border-t border-line">
-                        {s.offlineNote && (
-                          <div className="text-[12px] text-rust mb-3">
-                            {s.offlineNote}
-                          </div>
-                        )}
-                        {s.live && (
-                          <div className="text-[12.5px] text-text-dim mb-3">
-                            Diperbarui real-time — sedang dikerjakan.
-                          </div>
-                        )}
-                        {s.hand && (
-                          <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
-                            <span className="text-[16px]">&#9995;</span>
-                            Siswa mengangkat tangan — klik soal untuk membantu.
-                          </div>
-                        )}
-                        <div className="flex gap-4 mb-3 flex-wrap text-[11.5px] text-text-dim">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-pcb" />
-                            Benar
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-rust" />
-                            Salah
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-amber" />
-                            Sedang dikerjakan
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-white border-[1.5px] border-line" />
-                            Belum dikerjakan
-                          </span>
-                        </div>
-                        <div className="flex gap-2.5 flex-wrap">
-                          {modelSoalIndices.PROBLEM_SOLVING.map((idx) => {
-                            const st = s.soalStatus[idx];
-                            const soalNum = idx + 1;
-                            const isActive = st === "proses";
-                            const isClickable = isActive && s.live;
+                    return (
+                      <div key={s.id} className="border-b border-line">
+                        {/* ── PS row ──────────────────────────────── */}
+                        {activeModel === "PROBLEM_SOLVING" &&
+                          (() => {
+                            const ps = getPSStats(s);
                             return (
                               <div
-                                key={idx}
-                                className="flex flex-col items-center gap-1"
+                                className="grid grid-cols-[2fr_1fr_1.6fr_.7fr_.8fr] min-w-[580px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                                onClick={() =>
+                                  setOpenDetail(isOpen ? null : s.id)
+                                }
                               >
-                                <div
-                                  className={cn(
-                                    "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px]",
-                                    soalColors[st],
-                                    isClickable &&
-                                      "cursor-pointer hover:ring-2 hover:ring-amber/50"
-                                  )}
-                                  onClick={(e) => {
-                                    if (isClickable) {
-                                      e.stopPropagation();
-                                      setHintPanel({
-                                        studentName: s.name,
-                                        soalNum,
-                                      });
-                                    }
-                                  }}
-                                >
-                                  {isActive && s.liveMin ? (
-                                    <span className="text-[11px]">
-                                      {s.liveMin}m
+                                <span className="flex items-center gap-1.5">
+                                  {s.name}
+                                  {s.hand && (
+                                    <span className="text-[14px]">
+                                      &#9995;
                                     </span>
-                                  ) : (
-                                    soalNum
                                   )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── PBL detail panel ────────────────────── */}
-                    {isOpen &&
-                      activeModel === "PBL" &&
-                      (() => {
-                        const d = pblData[s.id];
-                        return (
-                          <div className="bg-paper-dim p-4 border-t border-line">
-                            {s.hand && (
-                              <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
-                                <span className="text-[16px]">&#9995;</span>
-                                Siswa mengangkat tangan.
-                              </div>
-                            )}
-                            <div className="text-[12px] font-semibold mb-2">
-                              Progres milestone
-                            </div>
-                            <div className="flex gap-1.5 items-center flex-wrap">
-                              {pblMilestones.map((m, i) => {
-                                const done = i < d.reached;
-                                const current =
-                                  i === d.reached && d.reached < d.total;
-                                return (
-                                  <div
-                                    key={i}
-                                    className="flex items-center gap-1.5"
-                                  >
-                                    {i > 0 && (
-                                      <span className="text-text-dim/50 text-[10px]">
-                                        &rarr;
+                                  {(s.hand ||
+                                    (ENABLE_AUTO_STUCK && s.autoStuck)) &&
+                                    pt && (
+                                      <span
+                                        className={cn(
+                                          "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                          pt.bg,
+                                          pt.color
+                                        )}
+                                      >
+                                        {pt.label} &middot;{" "}
+                                        {s.hand
+                                          ? "angkat tangan"
+                                          : "terdeteksi"}
                                       </span>
                                     )}
+                                  <span
+                                    className={cn(
+                                      "text-[11px] text-text-dim transition-transform",
+                                      isOpen && "rotate-90"
+                                    )}
+                                  >
+                                    &#9656;
+                                  </span>
+                                </span>
+                                <span className="font-mono text-[13px]">
+                                  {ps.done}/{ps.total}
+                                </span>
+                                <span className="flex items-center gap-2">
+                                  <span className="inline-block w-[90px] h-2 bg-paper-dim rounded overflow-hidden">
+                                    <span
+                                      className="block h-full bg-pcb rounded"
+                                      style={{
+                                        width: `${Math.round(ps.avg * 0.9)}%`,
+                                      }}
+                                    />
+                                  </span>
+                                  <span className="font-mono text-[13px] font-medium">
+                                    {ps.avg}
+                                  </span>
+                                </span>
+                                <span
+                                  className={cn(
+                                    "font-mono text-[12.5px]",
+                                    s.hp.timeLeft != null &&
+                                      s.hp.timeLeft <= 15
+                                      ? "text-rust"
+                                      : "text-text-dim"
+                                  )}
+                                >
+                                  {s.hp.timeLeft != null
+                                    ? `${s.hp.timeLeft}m`
+                                    : "—"}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-[12.5px] font-mono",
+                                    s.status === "selesai"
+                                      ? "text-pcb"
+                                      : "text-amber"
+                                  )}
+                                >
+                                  {s.status}
+                                </span>
+                              </div>
+                            );
+                          })()}
+
+                        {/* ── PBL row ─────────────────────────────── */}
+                        {activeModel === "PBL" &&
+                          (() => {
+                            const d = pblData[s.id];
+                            if (!d) return null;
+                            return (
+                              <div
+                                className="grid grid-cols-[2fr_1fr_1.5fr_.8fr] min-w-[520px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                                onClick={() =>
+                                  setOpenDetail(isOpen ? null : s.id)
+                                }
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  {s.name}
+                                  {s.hand && (
+                                    <span className="text-[14px]">
+                                      &#9995;
+                                    </span>
+                                  )}
+                                  {s.hand && pt && (
                                     <span
                                       className={cn(
-                                        "text-[11.5px] px-2 py-1 border",
-                                        done
-                                          ? "bg-pcb/10 border-pcb text-pcb"
-                                          : current
-                                            ? "bg-amber/10 border-amber text-amber"
-                                            : "bg-paper border-line text-text-dim"
+                                        "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                        pt.bg,
+                                        pt.color
                                       )}
                                     >
-                                      {done ? "✓" : current ? "●" : "○"} {m}
+                                      {pt.label} &middot; angkat tangan
                                     </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                    {/* ── TRF detail panel ────────────────────── */}
-                    {isOpen &&
-                      activeModel === "TRANSFORMATIF" &&
-                      (() => {
-                        const d = trfData[s.id];
-                        return (
-                          <div className="bg-paper-dim p-4 border-t border-line">
-                            {s.hand && (
-                              <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
-                                <span className="text-[16px]">&#9995;</span>
-                                Siswa mengangkat tangan.
-                              </div>
-                            )}
-                            <div className="text-[12px] font-semibold mb-2">
-                              Detail penilaian rubrik
-                            </div>
-                            {d.penilaian === "dinilai" ? (
-                              <div className="flex items-center gap-3">
-                                <span className="inline-block w-[120px] h-2.5 bg-paper rounded overflow-hidden">
+                                  )}
                                   <span
-                                    className="block h-full bg-pcb rounded"
-                                    style={{
-                                      width: `${d.nilaiRubrik}%`,
-                                    }}
-                                  />
+                                    className={cn(
+                                      "text-[11px] text-text-dim transition-transform",
+                                      isOpen && "rotate-90"
+                                    )}
+                                  >
+                                    &#9656;
+                                  </span>
+                                </span>
+                                <span className="font-mono text-[13px]">
+                                  {d.reached}/{d.total}
+                                </span>
+                                <span className="text-[13px]">
+                                  {d.lastApproved}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-[12.5px] font-mono",
+                                    d.status === "selesai"
+                                      ? "text-pcb"
+                                      : d.status === "revisi"
+                                        ? "text-rust"
+                                        : "text-amber"
+                                  )}
+                                >
+                                  {d.status}
+                                </span>
+                              </div>
+                            );
+                          })()}
+
+                        {/* ── TRF row ─────────────────────────────── */}
+                        {activeModel === "TRANSFORMATIF" &&
+                          (() => {
+                            const d = trfData[s.id];
+                            if (!d) return null;
+                            return (
+                              <div
+                                className="grid grid-cols-[2fr_1fr_1.2fr_1fr] min-w-[520px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                                onClick={() =>
+                                  setOpenDetail(isOpen ? null : s.id)
+                                }
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  {s.name}
+                                  {s.hand && (
+                                    <span className="text-[14px]">
+                                      &#9995;
+                                    </span>
+                                  )}
+                                  {s.hand && pt && (
+                                    <span
+                                      className={cn(
+                                        "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                        pt.bg,
+                                        pt.color
+                                      )}
+                                    >
+                                      {pt.label} &middot; angkat tangan
+                                    </span>
+                                  )}
+                                  <span
+                                    className={cn(
+                                      "text-[11px] text-text-dim transition-transform",
+                                      isOpen && "rotate-90"
+                                    )}
+                                  >
+                                    &#9656;
+                                  </span>
+                                </span>
+                                <span className="font-mono text-[13px]">
+                                  {d.refleksiSent}/{d.refleksiTotal}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-[12.5px] font-mono",
+                                    d.penilaian === "dinilai"
+                                      ? "text-pcb"
+                                      : "text-amber"
+                                  )}
+                                >
+                                  {d.penilaian}
                                 </span>
                                 <span className="font-mono text-[13px] font-medium">
-                                  {d.nilaiRubrik}/100
+                                  {d.nilaiRubrik != null ? d.nilaiRubrik : "—"}
                                 </span>
                               </div>
-                            ) : (
-                              <div className="text-[12.5px] text-text-dim">
-                                Menunggu penilaian guru.
+                            );
+                          })()}
+
+                        {/* ── DL row ──────────────────────────────── */}
+                        {activeModel === "DEEP_LEARNING" &&
+                          (() => {
+                            const d = dlData[s.id];
+                            if (!d) return null;
+                            return (
+                              <div
+                                className="grid grid-cols-[2fr_1.2fr_2fr_.6fr] min-w-[580px] px-4 py-3 text-[13.5px] cursor-pointer items-center hover:bg-paper-dim/50"
+                                onClick={() =>
+                                  setOpenDetail(isOpen ? null : s.id)
+                                }
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  {s.name}
+                                  {s.hand && (
+                                    <span className="text-[14px]">
+                                      &#9995;
+                                    </span>
+                                  )}
+                                  {s.hand && pt && (
+                                    <span
+                                      className={cn(
+                                        "text-[10px] font-semibold px-1.5 py-0.5 border whitespace-nowrap",
+                                        pt.bg,
+                                        pt.color
+                                      )}
+                                    >
+                                      {pt.label} &middot; angkat tangan
+                                    </span>
+                                  )}
+                                  <span
+                                    className={cn(
+                                      "text-[11px] text-text-dim transition-transform",
+                                      isOpen && "rotate-90"
+                                    )}
+                                  >
+                                    &#9656;
+                                  </span>
+                                </span>
+                                <span className="text-[13px]">
+                                  {d.lapisan}
+                                </span>
+                                <span className="flex gap-1.5 font-mono text-[12px]">
+                                  {d.skor.map((v, i) => (
+                                    <span
+                                      key={i}
+                                      className={cn(
+                                        "px-1.5 py-0.5 border",
+                                        v != null
+                                          ? "border-line bg-white"
+                                          : "border-transparent text-text-dim"
+                                      )}
+                                    >
+                                      {v != null ? v : "—"}
+                                    </span>
+                                  ))}
+                                </span>
+                                <span className="font-mono text-[13px] font-medium">
+                                  {d.total != null ? d.total : "—"}
+                                </span>
+                              </div>
+                            );
+                          })()}
+
+                        {/* ── PS detail panel ─────────────────────── */}
+                        {isOpen && activeModel === "PROBLEM_SOLVING" && (
+                          <div className="bg-paper-dim p-4 border-t border-line">
+                            {s.live && (
+                              <div className="text-[12.5px] text-text-dim mb-3">
+                                Diperbarui real-time — sedang dikerjakan.
                               </div>
                             )}
-                          </div>
-                        );
-                      })()}
-
-                    {/* ── DL detail panel ─────────────────────── */}
-                    {isOpen &&
-                      activeModel === "DEEP_LEARNING" &&
-                      (() => {
-                        const d = dlData[s.id];
-                        return (
-                          <div className="bg-paper-dim p-4 border-t border-line">
                             {s.hand && (
                               <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
                                 <span className="text-[16px]">&#9995;</span>
-                                Siswa mengangkat tangan.
+                                Siswa mengangkat tangan — klik soal untuk
+                                membantu.
                               </div>
                             )}
-                            <div className="text-[12px] font-semibold mb-2">
-                              Skor per lapisan
+                            {ENABLE_AUTO_STUCK && !s.hand && s.autoStuck && (
+                              <div className="bg-rust-soft border border-rust px-3 py-2 mb-3 text-[12.5px] text-rust flex items-center gap-2">
+                                <span className="text-[14px]">&#9888;</span>
+                                Terdeteksi kebuntuan otomatis — klik soal untuk
+                                membantu.
+                              </div>
+                            )}
+                            <div className="flex gap-4 mb-3 flex-wrap text-[11.5px] text-text-dim">
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-pcb" />
+                                Benar
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-rust" />
+                                Salah
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber" />
+                                Sedang dikerjakan
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-white border-[1.5px] border-line" />
+                                Belum dikerjakan
+                              </span>
                             </div>
-                            <div className="flex flex-col gap-2">
-                              {dlLayers.map((layer, i) => {
-                                const skor = d.skor[i];
+                            <div className="flex gap-2.5 flex-wrap">
+                              {modelSoalIndices.PROBLEM_SOLVING.map((idx) => {
+                                const st = s.soalStatus[idx];
+                                const soalNum = idx + 1;
+                                const isActive = st === "proses";
+                                const isClickable = isActive && s.live;
+                                const soal = rekapData?.soalList[idx];
                                 return (
                                   <div
-                                    key={i}
-                                    className="flex items-center gap-2 text-[12.5px]"
+                                    key={idx}
+                                    className="flex flex-col items-center gap-1"
                                   >
-                                    <span className="w-[100px] text-text-dim">
-                                      {layer}
-                                    </span>
-                                    <span className="flex-1 h-2 bg-paper rounded overflow-hidden max-w-[120px]">
-                                      {skor != null && (
-                                        <span
-                                          className="block h-full bg-pcb rounded"
-                                          style={{ width: `${skor}%` }}
-                                        />
+                                    <div
+                                      className={cn(
+                                        "w-9 h-9 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold border-[1.5px]",
+                                        soalColors[st],
+                                        isClickable &&
+                                          "cursor-pointer hover:ring-2 hover:ring-amber/50"
                                       )}
-                                    </span>
-                                    <span className="font-mono text-[12px] w-8 text-right">
-                                      {skor != null ? skor : "—"}
-                                    </span>
+                                      onClick={(e) => {
+                                        if (isClickable && soal) {
+                                          e.stopPropagation();
+                                          setHintPanel({
+                                            studentId: s.id,
+                                            studentName: s.name,
+                                            soalId: soal.soalId,
+                                            soalNum,
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      {isActive && s.liveMin ? (
+                                        <span className="text-[11px]">
+                                          {s.liveMin}m
+                                        </span>
+                                      ) : (
+                                        soalNum
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })}
                             </div>
                           </div>
-                        );
-                      })()}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            /* ── Pola Kesalahan Kelas tab ─────────────────────── */
-            <div className="flex flex-col gap-3">
-              {errorPatterns.map((p, i) => (
-                <div key={i} className="border border-line bg-white p-[18px]">
-                  <div className="flex justify-between items-center mb-1.5">
-                    <span className="font-semibold text-[14px]">{p.soal}</span>
-                    <span className="font-mono text-[13px] text-rust font-semibold">
-                      {p.pct}% salah
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-paper-dim rounded overflow-hidden mb-2">
-                    <div
-                      className="h-full bg-rust rounded"
-                      style={{ width: `${p.pct}%` }}
-                    />
-                  </div>
-                  <div className="text-[12.5px] text-text-dim">
-                    {p.salah} dari {p.total} siswa salah — {p.hint}
-                  </div>
+                        )}
+
+                        {/* ── PBL detail panel ────────────────────── */}
+                        {isOpen &&
+                          activeModel === "PBL" &&
+                          (() => {
+                            const d = pblData[s.id];
+                            if (!d) return null;
+                            return (
+                              <div className="bg-paper-dim p-4 border-t border-line">
+                                {s.hand && (
+                                  <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
+                                    <span className="text-[16px]">
+                                      &#9995;
+                                    </span>
+                                    Siswa mengangkat tangan.
+                                  </div>
+                                )}
+                                <div className="text-[12px] font-semibold mb-2">
+                                  Progres milestone
+                                </div>
+                                {pblMilestones.length === 0 ? (
+                                  <div className="text-[12.5px] text-text-dim">
+                                    Belum ada milestone yang dikonfigurasi.
+                                  </div>
+                                ) : (
+                                  <div className="flex gap-1.5 items-center flex-wrap">
+                                    {pblMilestones.map((m, i) => {
+                                      const done = i < d.reached;
+                                      const current =
+                                        i === d.reached &&
+                                        d.reached < d.total;
+                                      return (
+                                        <div
+                                          key={i}
+                                          className="flex items-center gap-1.5"
+                                        >
+                                          {i > 0 && (
+                                            <span className="text-text-dim/50 text-[10px]">
+                                              &rarr;
+                                            </span>
+                                          )}
+                                          <span
+                                            className={cn(
+                                              "text-[11.5px] px-2 py-1 border",
+                                              done
+                                                ? "bg-pcb/10 border-pcb text-pcb"
+                                                : current
+                                                  ? "bg-amber/10 border-amber text-amber"
+                                                  : "bg-paper border-line text-text-dim"
+                                            )}
+                                          >
+                                            {done
+                                              ? "✓"
+                                              : current
+                                                ? "●"
+                                                : "○"}{" "}
+                                            {m}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                        {/* ── TRF detail panel ────────────────────── */}
+                        {isOpen &&
+                          activeModel === "TRANSFORMATIF" &&
+                          (() => {
+                            const d = trfData[s.id];
+                            if (!d) return null;
+                            return (
+                              <div className="bg-paper-dim p-4 border-t border-line">
+                                {s.hand && (
+                                  <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
+                                    <span className="text-[16px]">
+                                      &#9995;
+                                    </span>
+                                    Siswa mengangkat tangan.
+                                  </div>
+                                )}
+                                <div className="text-[12px] font-semibold mb-2">
+                                  Detail penilaian rubrik
+                                </div>
+                                {d.penilaian === "dinilai" ? (
+                                  <div className="flex items-center gap-3">
+                                    <span className="inline-block w-[120px] h-2.5 bg-paper rounded overflow-hidden">
+                                      <span
+                                        className="block h-full bg-pcb rounded"
+                                        style={{
+                                          width: `${d.nilaiRubrik}%`,
+                                        }}
+                                      />
+                                    </span>
+                                    <span className="font-mono text-[13px] font-medium">
+                                      {d.nilaiRubrik}/100
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="text-[12.5px] text-text-dim">
+                                    Menunggu penilaian guru.
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                        {/* ── DL detail panel ─────────────────────── */}
+                        {isOpen &&
+                          activeModel === "DEEP_LEARNING" &&
+                          (() => {
+                            const d = dlData[s.id];
+                            if (!d) return null;
+                            return (
+                              <div className="bg-paper-dim p-4 border-t border-line">
+                                {s.hand && (
+                                  <div className="bg-amber-soft border border-amber px-3 py-2 mb-3 text-[12.5px] text-amber flex items-center gap-2">
+                                    <span className="text-[16px]">
+                                      &#9995;
+                                    </span>
+                                    Siswa mengangkat tangan.
+                                  </div>
+                                )}
+                                <div className="text-[12px] font-semibold mb-2">
+                                  Skor per lapisan
+                                </div>
+                                {dlLayers.length === 0 ? (
+                                  <div className="text-[12.5px] text-text-dim">
+                                    Belum ada data lapisan.
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-2">
+                                    {dlLayers.map((layer, i) => {
+                                      const skor = d.skor[i] ?? null;
+                                      return (
+                                        <div
+                                          key={i}
+                                          className="flex items-center gap-2 text-[12.5px]"
+                                        >
+                                          <span className="w-[100px] text-text-dim">
+                                            {layer}
+                                          </span>
+                                          <span className="flex-1 h-2 bg-paper rounded overflow-hidden max-w-[120px]">
+                                            {skor != null && (
+                                              <span
+                                                className="block h-full bg-pcb rounded"
+                                                style={{
+                                                  width: `${skor}%`,
+                                                }}
+                                              />
+                                            )}
+                                          </span>
+                                          <span className="font-mono text-[12px] w-8 text-right">
+                                            {skor != null ? skor : "—"}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          )
-        }
-      </Tabs>
+              ) : (
+                /* ── Pola Kesalahan Kelas tab ─────────────────────── */
+                <div className="flex flex-col gap-3">
+                  {errorPatterns.length === 0 ? (
+                    <EmptyState message="Belum ada pola kesalahan yang terdeteksi." />
+                  ) : (
+                    errorPatterns.map((p, i) => (
+                      <div
+                        key={i}
+                        className="border border-line bg-white p-[18px]"
+                      >
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="font-semibold text-[14px]">
+                            {p.soalTitle} — {p.conceptTagName}
+                          </span>
+                          <span className="font-mono text-[13px] text-rust font-semibold">
+                            {p.pct}% salah
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-paper-dim rounded overflow-hidden mb-2">
+                          <div
+                            className="h-full bg-rust rounded"
+                            style={{ width: `${p.pct}%` }}
+                          />
+                        </div>
+                        <div className="text-[12.5px] text-text-dim">
+                          {p.studentCount} dari {p.totalStudents} siswa
+                          mengalami kesalahan pada konsep ini.
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )
+            }
+          </Tabs>
+        </>
+      )}
 
       {/* Hint Panel Modal */}
       {hintPanel && (
         <HintPanel
+          studentId={hintPanel.studentId}
           studentName={hintPanel.studentName}
+          soalId={hintPanel.soalId}
           soalNum={hintPanel.soalNum}
           onClose={() => setHintPanel(null)}
         />

@@ -106,8 +106,10 @@ model Soal {
   status        SoalStatus    @default(DRAFT)
   createdById   String        @map("created_by_id")
   starterCode   String?       @db.Text @map("starter_code")
+  starterHtml   String?       @db.Text @map("starter_html")
   language      String?
   regime        String?       @default("verbose") // 'silent' | 'verbose' — derived from materi, overridable by guru
+  relevantProps String[]      @default([]) @map("relevant_props")
   estimatedMinutes Int?       @map("estimated_minutes") // guru estimate, fallback for timeRatio before class median is available
   aiPromptUsed  String?       @db.Text @map("ai_prompt_used")
   createdAt     DateTime      @default(now()) @map("created_at")
