@@ -643,17 +643,7 @@ export default function RekapPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const fetchRekap = useCallback((kelasId: string) => {
-    setRekapLoading(true);
-    setRekapData(null);
-    setFlagged(new Set());
-    fetch(`/api/kelas/${kelasId}/rekap`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.kelas) setRekapData(data);
-      })
-      .catch(() => {})
-      .finally(() => setRekapLoading(false));
+  const fetchFlags = useCallback((kelasId: string) => {
     fetch(`/api/teacher-flag?classId=${kelasId}`)
       .then((r) => r.json())
       .then((data) => {
@@ -663,6 +653,19 @@ export default function RekapPage() {
       })
       .catch(() => {});
   }, []);
+
+  const fetchRekap = useCallback((kelasId: string) => {
+    setRekapLoading(true);
+    setRekapData(null);
+    fetch(`/api/kelas/${kelasId}/rekap`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.kelas) setRekapData(data);
+      })
+      .catch(() => {})
+      .finally(() => setRekapLoading(false));
+    fetchFlags(kelasId);
+  }, [fetchFlags]);
 
   useEffect(() => {
     if (selectedKelasId) fetchRekap(selectedKelasId);
@@ -751,15 +754,7 @@ export default function RekapPage() {
         }
       })
       .catch(() => {
-        if (isCurrentlyFlagged) {
-          setFlagged((prev) => new Set(prev).add(key));
-        } else {
-          setFlagged((prev) => {
-            const next = new Set(prev);
-            next.delete(key);
-            return next;
-          });
-        }
+        if (selectedKelasId) fetchFlags(selectedKelasId);
       })
       .finally(() =>
         setFlagBusy((prev) => {
