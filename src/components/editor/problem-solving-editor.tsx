@@ -27,6 +27,75 @@ interface ProblemSolvingEditorProps {
   onClose: () => void;
 }
 
+interface CssTestResult {
+  testCaseId: string;
+  label: string;
+  passed: boolean;
+  actual: string;
+  expected: string;
+}
+
+function evaluateCssInIframe(
+  html: string,
+  css: string,
+  testCases: { id: string; label: string; input: string; expected: string }[]
+): Promise<CssTestResult[]> {
+  return new Promise((resolve) => {
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;left:-9999px;width:1024px;height:768px;border:none;";
+    iframe.sandbox.add("allow-same-origin");
+    document.body.appendChild(iframe);
+
+    const timeout = setTimeout(() => {
+      document.body.removeChild(iframe);
+      resolve(testCases.map((tc) => ({
+        testCaseId: tc.id, label: tc.label, passed: false, actual: "", expected: tc.expected,
+      })));
+    }, 3000);
+
+    iframe.onload = () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) throw new Error("no document");
+        const results: CssTestResult[] = [];
+        for (const tc of testCases) {
+          const match = tc.input.match(/^([^{]+)\{\s*([^}\s]+)\s*\}$/);
+          if (!match) {
+            results.push({ testCaseId: tc.id, label: tc.label, passed: false, actual: "parse error", expected: tc.expected });
+            continue;
+          }
+          const selector = match[1].trim();
+          const property = match[2].trim();
+          const el = doc.querySelector(selector);
+          if (!el) {
+            results.push({ testCaseId: tc.id, label: tc.label, passed: false, actual: "element not found", expected: tc.expected });
+            continue;
+          }
+          const computed = iframe.contentWindow!.getComputedStyle(el);
+          const actual = computed.getPropertyValue(property).trim();
+          results.push({
+            testCaseId: tc.id, label: tc.label,
+            passed: actual === tc.expected,
+            actual, expected: tc.expected,
+          });
+        }
+        clearTimeout(timeout);
+        document.body.removeChild(iframe);
+        resolve(results);
+      } catch {
+        clearTimeout(timeout);
+        document.body.removeChild(iframe);
+        resolve(testCases.map((tc) => ({
+          testCaseId: tc.id, label: tc.label, passed: false, actual: "error", expected: tc.expected,
+        })));
+      }
+    };
+
+    const srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${html}</body></html>`;
+    iframe.srcdoc = srcdoc;
+  });
+}
+
 export function ProblemSolvingEditor({
   soalId,
   title,
@@ -57,6 +126,7 @@ export function ProblemSolvingEditor({
     total: number;
     score: number;
     failedCriteria: string[];
+    details: { label: string; passed: boolean }[];
   } | null>(null);
 
   const { record } = useEventRecorder(studentId, classId, soalId, attemptId);
@@ -258,28 +328,52 @@ export function ProblemSolvingEditor({
       if (!subRes.ok) throw new Error("Gagal membuat submission");
       const submission = await subRes.json();
 
-      const runRes = await fetch(`/api/submissions/${submission.id}/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      if (!runRes.ok) throw new Error("Gagal menjalankan test");
-      const result = await runRes.json();
+      let result: { testResults: { passed: boolean; label: string }[]; score: number; testsPassed: number; testsTotal: number };
+
+      if (language === "css" || language === "html") {
+        const tcRes = await fetch(`/api/soal/${soalId}`);
+        if (!tcRes.ok) throw new Error("Gagal memuat test case");
+        const soalData = await tcRes.json();
+        const testCases: { id: string; label: string; input: string; expected: string }[] =
+          (soalData.testCases ?? []).map((tc: { id: string; label?: string; input: string; expected: string }) => ({
+            id: tc.id, label: tc.label ?? "", input: tc.input, expected: tc.expected,
+          }));
+
+        const cssResults = await evaluateCssInIframe(starterHtml, code, testCases);
+
+        const runRes = await fetch(`/api/submissions/${submission.id}/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, cssResults }),
+        });
+        if (!runRes.ok) throw new Error("Gagal menyimpan hasil");
+        result = await runRes.json();
+      } else {
+        const runRes = await fetch(`/api/submissions/${submission.id}/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+        if (!runRes.ok) throw new Error("Gagal menjalankan test");
+        result = await runRes.json();
+      }
 
       const passed: number = result.testsPassed ?? 0;
       const total: number = result.testsTotal ?? 0;
-      const failedCriteria: string[] = (result.testResults ?? [])
-        .filter((t: { passed: boolean }) => !t.passed)
-        .map((t: { label: string }) => t.label);
+      const allTests: { passed: boolean; label: string }[] = result.testResults ?? [];
+      const failedCriteria: string[] = allTests
+        .filter((t) => !t.passed)
+        .map((t) => t.label);
+      const details = allTests.map((t) => ({ label: t.label, passed: t.passed }));
 
-      setSubmitResult({ passed, total, score: result.score ?? 0, failedCriteria });
+      setSubmitResult({ passed, total, score: result.score ?? 0, failedCriteria, details });
       record("submit_result", { passed, total, failedCriteria });
     } catch {
-      setSubmitResult({ passed: 0, total: 0, score: 0, failedCriteria: ["Gagal mengirim"] });
+      setSubmitResult({ passed: 0, total: 0, score: 0, failedCriteria: ["Gagal mengirim"], details: [] });
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, code, soalId, record]);
+  }, [submitting, code, soalId, language, starterHtml, record]);
 
   const handleRaiseHand = useCallback(() => {
     const next = !handRaised;
@@ -412,12 +506,16 @@ export function ProblemSolvingEditor({
               }`}
             >
               <div className="font-semibold mb-1">
-                Hasil: {submitResult.passed}/{submitResult.total} test lulus
+                Hasil: {submitResult.passed}/{submitResult.total} kriteria terpenuhi
                 {submitResult.total > 0 && ` (${submitResult.score}%)`}
               </div>
-              {submitResult.failedCriteria.length > 0 && (
-                <div className="text-[11px] opacity-80">
-                  Gagal: {submitResult.failedCriteria.join(", ")}
+              {submitResult.details.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {submitResult.details.map((d, i) => (
+                    <div key={i} className={`text-[11px] ${d.passed ? "text-[#4aba80]" : "text-[#e0967a]"}`}>
+                      {d.passed ? "✓" : "✗"} {d.label}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

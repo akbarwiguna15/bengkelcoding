@@ -1,9 +1,18 @@
 import { prisma } from "@/lib/prisma";
 import type { RunResult, LintError } from "@/types";
 
+interface ClientCssResult {
+  testCaseId: string;
+  label: string;
+  passed: boolean;
+  actual: string;
+  expected: string;
+}
+
 export async function evaluateSubmission(
   submissionId: string,
-  code: string
+  code: string,
+  cssResults?: ClientCssResult[]
 ): Promise<RunResult> {
   const submission = await prisma.submission.findUniqueOrThrow({
     where: { id: submissionId },
@@ -16,32 +25,62 @@ export async function evaluateSubmission(
     },
   });
 
+  const isCss = submission.soal.language === "css" || submission.soal.language === "html";
   const testResults = [];
   let passed = 0;
 
-  for (const tc of submission.soal.testCases) {
-    const result = await runCode(code, tc.input, submission.soal.language || "javascript");
-    const isPassed = normalizeOutput(result.stdout) === normalizeOutput(tc.expected);
-    if (isPassed) passed++;
+  if (isCss && cssResults) {
+    const resultMap = new Map(cssResults.map((r) => [r.testCaseId, r]));
 
-    testResults.push({
-      testCaseId: tc.id,
-      label: tc.label,
-      passed: isPassed,
-      actual: result.stdout || result.stderr,
-      expected: tc.expected,
-      error: result.stderr || undefined,
-    });
+    for (const tc of submission.soal.testCases) {
+      const cr = resultMap.get(tc.id);
+      const isPassed = cr?.passed ?? false;
+      if (isPassed) passed++;
 
-    if (!isPassed && tc.conceptTagId) {
-      await prisma.errorLog.create({
-        data: {
-          submissionId,
-          conceptTagId: tc.conceptTagId,
-          message: result.stderr || `Expected "${tc.expected}", got "${result.stdout}"`,
-          occurredAt: new Date(),
-        },
+      testResults.push({
+        testCaseId: tc.id,
+        label: tc.label,
+        passed: isPassed,
+        actual: cr?.actual ?? "",
+        expected: tc.expected,
       });
+
+      if (!isPassed && tc.conceptTagId) {
+        await prisma.errorLog.create({
+          data: {
+            submissionId,
+            conceptTagId: tc.conceptTagId,
+            message: `Expected "${tc.expected}", got "${cr?.actual ?? ""}"`,
+            occurredAt: new Date(),
+          },
+        });
+      }
+    }
+  } else {
+    for (const tc of submission.soal.testCases) {
+      const result = await runCode(code, tc.input, submission.soal.language || "javascript");
+      const isPassed = normalizeOutput(result.stdout) === normalizeOutput(tc.expected);
+      if (isPassed) passed++;
+
+      testResults.push({
+        testCaseId: tc.id,
+        label: tc.label,
+        passed: isPassed,
+        actual: result.stdout || result.stderr,
+        expected: tc.expected,
+        error: result.stderr || undefined,
+      });
+
+      if (!isPassed && tc.conceptTagId) {
+        await prisma.errorLog.create({
+          data: {
+            submissionId,
+            conceptTagId: tc.conceptTagId,
+            message: result.stderr || `Expected "${tc.expected}", got "${result.stdout}"`,
+            occurredAt: new Date(),
+          },
+        });
+      }
     }
   }
 

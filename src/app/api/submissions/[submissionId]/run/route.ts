@@ -26,7 +26,7 @@ export async function POST(
     }
 
     const data = submitCodeSchema.parse(body);
-    const result = await evaluateSubmission(submissionId, data.code);
+    const result = await evaluateSubmission(submissionId, data.code, data.cssResults);
 
     return NextResponse.json(result);
   } catch (error) {

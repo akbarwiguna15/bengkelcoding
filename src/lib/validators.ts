@@ -45,6 +45,13 @@ export const approveSoalSchema = z.object({
 
 export const submitCodeSchema = z.object({
   code: z.string(),
+  cssResults: z.array(z.object({
+    testCaseId: z.string(),
+    label: z.string(),
+    passed: z.boolean(),
+    actual: z.string(),
+    expected: z.string(),
+  })).optional(),
 });
 
 export const submitWritingSchema = z.object({
