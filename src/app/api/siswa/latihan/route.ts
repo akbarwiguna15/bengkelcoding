@@ -71,6 +71,8 @@ export async function GET() {
             status: true,
             autoGradeScore: true,
             totalScore: true,
+            testsPassed: true,
+            testsTotal: true,
             milestoneProgress: {
               select: { milestoneId: true, status: true },
             },
@@ -120,6 +122,8 @@ export async function GET() {
         rubricCriteria: soal.rubricCriteria,
         status,
         score,
+        testsPassed: sub?.testsPassed ?? null,
+        testsTotal: sub?.testsTotal ?? null,
         milestoneProgress: sub?.milestoneProgress ?? [],
         rubricGrades: sub?.rubricGrades ?? [],
         dueAt: a.dueAt?.toISOString() ?? null,

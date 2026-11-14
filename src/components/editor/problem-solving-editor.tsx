@@ -25,6 +25,7 @@ interface ProblemSolvingEditorProps {
   studentId: string;
   classId: string;
   onClose: () => void;
+  onSubmitDone?: () => void;
 }
 
 interface CssTestResult {
@@ -110,6 +111,7 @@ export function ProblemSolvingEditor({
   studentId,
   classId,
   onClose,
+  onSubmitDone,
 }: ProblemSolvingEditorProps) {
   const [attemptId] = useState(
     () => `${soalId}_${studentId}_${Date.now().toString(36)}`
@@ -134,6 +136,7 @@ export function ProblemSolvingEditor({
   const lintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLintSigRef = useRef("");
   const closeSentRef = useRef(false);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     record("attempt_open", {
@@ -174,6 +177,12 @@ export function ProblemSolvingEditor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (submitResult && resultRef.current) {
+      resultRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [submitResult]);
 
   const handleCodeChange = useCallback(
     (newCode: string) => {
@@ -368,12 +377,13 @@ export function ProblemSolvingEditor({
 
       setSubmitResult({ passed, total, score: result.score ?? 0, failedCriteria, details });
       record("submit_result", { passed, total, failedCriteria });
+      onSubmitDone?.();
     } catch {
       setSubmitResult({ passed: 0, total: 0, score: 0, failedCriteria: ["Gagal mengirim"], details: [] });
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, code, soalId, language, starterHtml, record]);
+  }, [submitting, code, soalId, language, starterHtml, record, onSubmitDone]);
 
   const handleRaiseHand = useCallback(() => {
     const next = !handRaised;
@@ -443,7 +453,7 @@ export function ProblemSolvingEditor({
         </div>
 
         {/* Code editor */}
-        <div className="flex flex-col bg-ink min-w-0">
+        <div className="flex flex-col bg-ink min-w-0 overflow-y-auto">
           <div className="flex justify-between items-center px-3 py-2 bg-ink-soft border-b border-[#2a3b32]">
             <span className="font-mono text-[12px] text-[#9fb3a8]">
               {fileName}
@@ -499,6 +509,7 @@ export function ProblemSolvingEditor({
 
           {submitResult && (
             <div
+              ref={resultRef}
               className={`font-mono text-[12px] px-4 py-2.5 border-t border-[#2a3b32] ${
                 submitResult.passed === submitResult.total && submitResult.total > 0
                   ? "bg-[#0f2a1a] text-[#4aba80]"

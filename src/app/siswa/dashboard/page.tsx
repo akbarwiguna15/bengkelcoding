@@ -54,6 +54,8 @@ interface ApiSoal {
   rubricCriteria: ApiRubricCriterion[];
   status: "available" | "done" | "in_progress";
   score: number | null;
+  testsPassed: number | null;
+  testsTotal: number | null;
   milestoneProgress: { milestoneId: string; status: string }[];
   rubricGrades: { criterionId: string; score: number }[];
   dueAt: string | null;
@@ -299,13 +301,21 @@ export default function LatihanPage() {
                     Lanjutkan
                   </Button>
                 )}
-                {soal.status === "done" && (
+                {soal.status === "done" && !activeEditor && (
                   <Button
                     variant="ghost"
                     className="py-2 px-4 text-[12.5px]"
+                    onClick={() => openEditor(soal.id)}
                   >
                     Selesai{soal.score != null ? ` · ${Math.round(soal.score)}` : ""}
+                    {soal.testsTotal != null ? ` (${soal.testsPassed ?? 0}/${soal.testsTotal})` : ""}
+                    {" "}— Lihat
                   </Button>
+                )}
+                {soal.status === "done" && activeEditor === soal.id && (
+                  <span className="text-[12.5px] text-text-dim">
+                    Selesai{soal.score != null ? ` · ${Math.round(soal.score)}` : ""}
+                  </span>
                 )}
               </div>
 
@@ -335,6 +345,7 @@ export default function LatihanPage() {
                     studentId={studentId}
                     classId={kelasId}
                     onClose={closeEditor}
+                    onSubmitDone={fetchData}
                   />
                 )}
 
