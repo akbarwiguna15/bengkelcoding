@@ -224,6 +224,7 @@ model Submission {
   testsPassed    Int?             @map("tests_passed")
   testsTotal     Int?             @map("tests_total")
   lintErrors     Json?            @map("lint_errors")
+  testResultsJson Json?           @map("test_results_json")
   writingContent String?          @db.Text @map("writing_content")
   autoGradeScore Float?           @map("auto_grade_score")
   totalScore     Float?           @map("total_score")

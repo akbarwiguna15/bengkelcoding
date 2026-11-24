@@ -94,6 +94,7 @@ export async function evaluateSubmission(
       testsPassed: passed,
       testsTotal: total,
       autoGradeScore: score,
+      testResultsJson: testResults,
       status: "SUBMITTED",
       submittedAt: new Date(),
     },
