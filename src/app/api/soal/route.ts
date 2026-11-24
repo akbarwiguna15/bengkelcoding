@@ -46,19 +46,48 @@ export async function POST(req: Request) {
   try {
     const session = await requireGuru();
     const body = await req.json();
-    const data = createSoalSchema.parse(body);
+    const { testCases, kelasId, ...soalData } = createSoalSchema.parse(body);
 
-    const soal = await prisma.soal.create({
-      data: {
-        ...data,
-        createdById: session.user.id,
-      },
+    const soal = await prisma.$transaction(async (tx) => {
+      const created = await tx.soal.create({
+        data: {
+          ...soalData,
+          createdById: session.user.id,
+        },
+      });
+
+      if (testCases && testCases.length > 0) {
+        await tx.testCase.createMany({
+          data: testCases.map((tc, i) => ({
+            soalId: created.id,
+            input: tc.input,
+            expected: tc.expected,
+            label: tc.label || `Test ${i + 1}`,
+            isHidden: tc.isHidden ?? false,
+            order: tc.order ?? i,
+          })),
+        });
+      }
+
+      if (kelasId) {
+        await tx.soalAssignment.create({
+          data: { soalId: created.id, kelasId },
+        });
+      }
+
+      return created;
     });
 
     return NextResponse.json(soal, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error instanceof Error && "issues" in error) {
+      return NextResponse.json(
+        { error: "Data soal tidak valid" },
+        { status: 400 }
+      );
     }
     return NextResponse.json({ error: "Terjadi kesalahan" }, { status: 500 });
   }

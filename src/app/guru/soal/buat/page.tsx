@@ -31,6 +31,13 @@ interface AICorrection {
   suggestion?: string;
 }
 
+interface ManualTestCase {
+  label: string;
+  property: string;
+  expected: string;
+  isHidden: boolean;
+}
+
 const materiByTingkat: Record<string, string[]> = {
   "Kelas X Web": [
     "Logika dan Algoritma Dasar",
@@ -91,6 +98,8 @@ const modelColorMap: Record<LearningModel, string> = {
   DEEP_LEARNING: "ocean",
 };
 
+// SIMULASI: Data contoh untuk fitur AI generate soal.
+// Akan diganti saat endpoint /api/soal/generate mendukung model AI sungguhan.
 const demoAIDrafts: Record<LearningModel, AIDraft[]> = {
   PROBLEM_SOLVING: [
     {
@@ -183,6 +192,36 @@ export default function BuatSoalPage() {
   const [manualCode, setManualCode] = useState("");
   const [correction, setCorrection] = useState<AICorrection | null>(null);
   const [correcting, setCorrecting] = useState(false);
+  const [manualHtml, setManualHtml] = useState("");
+  const [manualProps, setManualProps] = useState("");
+  const [difficulty, setDifficulty] = useState(1);
+  const [estimatedMinutes, setEstimatedMinutes] = useState("");
+  const [regime, setRegime] = useState<"verbose" | "silent">("verbose");
+  const [manualTestCases, setManualTestCases] = useState<ManualTestCase[]>([
+    { label: "", property: "", expected: "", isHidden: false },
+  ]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  function addTestCase() {
+    setManualTestCases((prev) => [
+      ...prev,
+      { label: "", property: "", expected: "", isHidden: false },
+    ]);
+  }
+
+  function removeTestCase(index: number) {
+    setManualTestCases((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateTestCase(
+    index: number,
+    field: keyof ManualTestCase,
+    value: string | boolean
+  ) {
+    setManualTestCases((prev) =>
+      prev.map((tc, i) => (i === index ? { ...tc, [field]: value } : tc))
+    );
+  }
 
   // AI drafts
   const [aiDrafts, setAiDrafts] = useState<AIDraft[]>([]);
@@ -210,9 +249,10 @@ export default function BuatSoalPage() {
     setStep("manual");
   }
 
+  // TODO: Bagian AI generate soal masih simulasi — belum ada endpoint AI.
   function handleChooseAI() {
     setGenerating(true);
-    // Simulate AI generation
+    // SIMULASI: menampilkan demoAIDrafts, bukan hasil AI sungguhan
     setTimeout(() => {
       setAiDrafts(
         (demoAIDrafts[selectedModel!] || []).map((d) => ({ ...d, accepted: null }))
@@ -222,9 +262,10 @@ export default function BuatSoalPage() {
     }, 1500);
   }
 
+  // TODO: Validasi AI masih simulasi — belum ada endpoint AI.
   function handleValidateManual() {
     setCorrecting(true);
-    // Simulate AI validation
+    // SIMULASI: logika pencocokan string sederhana, bukan model AI
     setTimeout(() => {
       const modelName = models.find((m) => m.id === selectedModel)?.name;
       const bodyLower = manualBody.toLowerCase();
@@ -264,24 +305,67 @@ export default function BuatSoalPage() {
     );
   }
 
+  // TODO: Penyimpanan soal AI masih simulasi — belum POST ke API.
   function handleFinishAIReview() {
     const accepted = aiDrafts.filter((d) => d.accepted === true);
     if (accepted.length === 0) return;
     setLoading(true);
-    // In production: POST accepted drafts to /api/soal
+    // SIMULASI: belum menyimpan ke database, hanya redirect
     setTimeout(() => {
       setLoading(false);
       router.push("/guru/soal");
     }, 800);
   }
 
-  function handleSubmitManual() {
+  async function handleSubmitManual() {
+    if (!manualTitle.trim() || !manualBody.trim() || !selectedModel || !selectedKelas) return;
     setLoading(true);
-    // In production: POST to /api/soal
-    setTimeout(() => {
-      setLoading(false);
+    setSubmitError(null);
+
+    const validTestCases = manualTestCases
+      .filter((tc) => tc.property.trim() && tc.expected.trim())
+      .map((tc, i) => ({
+        input: tc.property.trim(),
+        expected: tc.expected.trim(),
+        label: tc.label.trim() || `Test ${i + 1}`,
+        isHidden: tc.isHidden,
+        order: i,
+      }));
+
+    const payload: Record<string, unknown> = {
+      title: manualTitle.trim(),
+      description: manualBody.trim(),
+      learningModel: selectedModel,
+      topic: selectedMateri.join(", "),
+      difficulty,
+      regime,
+      language: "css",
+      kelasId: selectedKelas,
+    };
+    if (manualCode.trim()) payload.starterCode = manualCode.trim();
+    if (manualHtml.trim()) payload.starterHtml = manualHtml.trim();
+    if (manualProps.trim()) {
+      payload.relevantProps = manualProps.split(",").map((p) => p.trim()).filter(Boolean);
+    }
+    if (estimatedMinutes) payload.estimatedMinutes = Number(estimatedMinutes);
+    if (validTestCases.length > 0) payload.testCases = validTestCases;
+
+    try {
+      const res = await fetch("/api/soal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Gagal menyimpan soal" }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       router.push("/guru/soal");
-    }, 800);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Gagal menyimpan soal");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const completedSteps = stepOrder.slice(0, currentIdx);
@@ -548,7 +632,7 @@ export default function BuatSoalPage() {
             >
               {models.find((m) => m.id === selectedModel)?.name}
             </Badge>
-            . Setelah selesai, sistem AI akan memeriksa kesesuaian soal.
+            . Soal akan disimpan dan ditugaskan ke kelas yang dipilih.
           </p>
 
           <div className="max-w-[600px]">
@@ -581,8 +665,191 @@ export default function BuatSoalPage() {
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               placeholder="Potongan kode yang akan dikerjakan siswa..."
-              className="w-full min-h-[80px] border border-line bg-white px-3 py-2.5 text-[12.5px] font-mono resize-y mb-5 text-text-primary"
+              className="w-full min-h-[80px] border border-line bg-white px-3 py-2.5 text-[12.5px] font-mono resize-y mb-4 text-text-primary"
             />
+
+            {/* HTML awal — untuk PROBLEM_SOLVING */}
+            {selectedModel === "PROBLEM_SOLVING" && (
+              <>
+                <label className="block text-[13px] font-semibold mb-1.5">
+                  HTML awal{" "}
+                  <span className="font-normal text-text-dim">
+                    (markup yang tidak boleh diubah siswa, opsional)
+                  </span>
+                </label>
+                <textarea
+                  value={manualHtml}
+                  onChange={(e) => setManualHtml(e.target.value)}
+                  placeholder={'<nav class="navbar">\n  <a href="#">Home</a>\n  <a href="#">About</a>\n</nav>'}
+                  className="w-full min-h-[80px] border border-line bg-white px-3 py-2.5 text-[12.5px] font-mono resize-y mb-4 text-text-primary"
+                />
+              </>
+            )}
+
+            {/* Konfigurasi */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-[13px] font-semibold mb-1.5">
+                  Tingkat kesulitan
+                </label>
+                <div className="flex gap-1.5">
+                  {([1, 2, 3] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDifficulty(d)}
+                      className={cn(
+                        "flex-1 py-2 text-[13px] font-sans border cursor-pointer transition-colors",
+                        difficulty === d
+                          ? "bg-ink text-paper border-ink"
+                          : "bg-white border-line hover:border-ink"
+                      )}
+                    >
+                      {d === 1 ? "Mudah" : d === 2 ? "Sedang" : "Sulit"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-semibold mb-1.5">
+                  Mode feedback
+                </label>
+                <div className="flex gap-1.5">
+                  {(["verbose", "silent"] as const).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRegime(r)}
+                      className={cn(
+                        "flex-1 py-2 text-[13px] font-sans border cursor-pointer transition-colors",
+                        regime === r
+                          ? "bg-ink text-paper border-ink"
+                          : "bg-white border-line hover:border-ink"
+                      )}
+                    >
+                      {r === "verbose" ? "Detail" : "Ringkas"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-semibold mb-1.5">
+                  Estimasi waktu{" "}
+                  <span className="font-normal text-text-dim">(menit)</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={estimatedMinutes}
+                  onChange={(e) => setEstimatedMinutes(e.target.value)}
+                  placeholder="30"
+                  className="w-full border border-line bg-white px-3 py-2 text-[13.5px] font-sans text-text-primary"
+                />
+              </div>
+            </div>
+
+            {/* Properti CSS — untuk PROBLEM_SOLVING */}
+            {selectedModel === "PROBLEM_SOLVING" && (
+              <>
+                <label className="block text-[13px] font-semibold mb-1.5">
+                  Properti CSS yang diukur{" "}
+                  <span className="font-normal text-text-dim">
+                    (pisahkan dengan koma)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={manualProps}
+                  onChange={(e) => setManualProps(e.target.value)}
+                  placeholder="display, justify-content, align-items, gap"
+                  className="w-full border border-line bg-white px-3 py-2.5 text-[13.5px] font-sans mb-4 text-text-primary"
+                />
+              </>
+            )}
+
+            {/* Test cases — untuk PROBLEM_SOLVING */}
+            {selectedModel === "PROBLEM_SOLVING" && (
+              <div className="mb-5">
+                <label className="block text-[13px] font-semibold mb-2">
+                  Daftar test case
+                </label>
+
+                <div className="grid grid-cols-[1.2fr_1fr_1fr_auto_auto] gap-2 mb-1.5 text-[11px] uppercase tracking-wider text-text-dim font-semibold px-0.5">
+                  <span>Label</span>
+                  <span>Properti CSS</span>
+                  <span>Nilai yang diharapkan</span>
+                  <span className="w-[52px] text-center">Sembunyi</span>
+                  <span className="w-7" />
+                </div>
+
+                {manualTestCases.map((tc, i) => (
+                  <div
+                    key={i}
+                    className="grid grid-cols-[1.2fr_1fr_1fr_auto_auto] gap-2 mb-2 items-center"
+                  >
+                    <input
+                      type="text"
+                      value={tc.label}
+                      onChange={(e) => updateTestCase(i, "label", e.target.value)}
+                      placeholder="Menu tersusun rata"
+                      className="border border-line bg-white px-2.5 py-2 text-[12.5px] font-sans text-text-primary"
+                    />
+                    <input
+                      type="text"
+                      value={tc.property}
+                      onChange={(e) => updateTestCase(i, "property", e.target.value)}
+                      placeholder="justify-content"
+                      className="border border-line bg-white px-2.5 py-2 text-[12.5px] font-mono text-text-primary"
+                    />
+                    <input
+                      type="text"
+                      value={tc.expected}
+                      onChange={(e) => updateTestCase(i, "expected", e.target.value)}
+                      placeholder="space-between"
+                      className="border border-line bg-white px-2.5 py-2 text-[12.5px] font-mono text-text-primary"
+                    />
+                    <label className="flex items-center justify-center w-[52px]">
+                      <input
+                        type="checkbox"
+                        checked={tc.isHidden}
+                        onChange={(e) => updateTestCase(i, "isHidden", e.target.checked)}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeTestCase(i)}
+                      disabled={manualTestCases.length <= 1}
+                      className={cn(
+                        "w-7 h-7 flex items-center justify-center border border-line bg-white text-[14px] font-sans cursor-pointer",
+                        manualTestCases.length <= 1
+                          ? "opacity-30 cursor-not-allowed"
+                          : "hover:bg-rust-soft hover:border-rust hover:text-rust"
+                      )}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={addTestCase}
+                  className="text-[12.5px] font-sans text-pcb font-medium bg-transparent border-none cursor-pointer hover:underline"
+                >
+                  + Tambah test case
+                </button>
+              </div>
+            )}
+
+            {/* Error banner */}
+            {submitError && (
+              <div className="bg-rust-soft border border-rust px-4 py-3 mb-4 text-[13px] text-rust">
+                <strong>Gagal menyimpan:</strong> {submitError}
+              </div>
+            )}
 
             {/* AI Correction result */}
             {correction && (

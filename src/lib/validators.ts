@@ -27,7 +27,19 @@ export const createSoalSchema = z.object({
   topic: z.string().min(1),
   difficulty: z.number().min(1).max(3),
   starterCode: z.string().optional(),
+  starterHtml: z.string().optional(),
   language: z.string().optional(),
+  regime: z.string().optional(),
+  relevantProps: z.array(z.string()).optional(),
+  estimatedMinutes: z.number().min(1).optional(),
+  testCases: z.array(z.object({
+    input: z.string().min(1),
+    expected: z.string().min(1),
+    label: z.string().optional(),
+    isHidden: z.boolean().optional(),
+    order: z.number().optional(),
+  })).optional(),
+  kelasId: z.string().optional(),
 });
 
 export const generateSoalSchema = z.object({
