@@ -196,11 +196,19 @@ export default function BuatSoalPage() {
   const [manualProps, setManualProps] = useState("");
   const [difficulty, setDifficulty] = useState(1);
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
-  const [regime, setRegime] = useState<"verbose" | "silent">("verbose");
+  const [regime, setRegime] = useState<"verbose" | "silent">("silent");
   const [manualTestCases, setManualTestCases] = useState<ManualTestCase[]>([
     { label: "", property: "", expected: "", isHidden: false },
   ]);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const joined = selectedMateri.join(" ").toLowerCase();
+    const isHtmlCss = joined.includes("html") || joined.includes("css");
+    const isJs = joined.includes("javascript") || joined.includes("node") || joined.includes("express");
+    if (isHtmlCss && !isJs) setRegime("silent");
+    else if (isJs && !isHtmlCss) setRegime("verbose");
+  }, [selectedMateri]);
 
   function addTestCase() {
     setManualTestCases((prev) => [
@@ -339,7 +347,7 @@ export default function BuatSoalPage() {
       topic: selectedMateri.join(", "),
       difficulty,
       regime,
-      language: "css",
+      language: regime === "silent" ? "css" : "javascript",
       kelasId: selectedKelas,
     };
     if (manualCode.trim()) payload.starterCode = manualCode.trim();
@@ -657,34 +665,36 @@ export default function BuatSoalPage() {
               className="w-full min-h-[120px] border border-line bg-white px-3 py-2.5 text-[13.5px] font-sans resize-y mb-4 text-text-primary"
             />
 
-            <label className="block text-[13px] font-semibold mb-1.5">
-              Kode awal{" "}
-              <span className="font-normal text-text-dim">(opsional)</span>
-            </label>
-            <textarea
-              value={manualCode}
-              onChange={(e) => setManualCode(e.target.value)}
-              placeholder="Potongan kode yang akan dikerjakan siswa..."
-              className="w-full min-h-[80px] border border-line bg-white px-3 py-2.5 text-[12.5px] font-mono resize-y mb-4 text-text-primary"
-            />
-
-            {/* HTML awal — untuk PROBLEM_SOLVING */}
+            {/* HTML awal — tampil lebih dulu, untuk PROBLEM_SOLVING */}
             {selectedModel === "PROBLEM_SOLVING" && (
               <>
                 <label className="block text-[13px] font-semibold mb-1.5">
                   HTML awal{" "}
                   <span className="font-normal text-text-dim">
-                    (markup yang tidak boleh diubah siswa, opsional)
+                    — markup yang dilihat siswa, tidak bisa diedit
                   </span>
                 </label>
                 <textarea
                   value={manualHtml}
                   onChange={(e) => setManualHtml(e.target.value)}
-                  placeholder={'<nav class="navbar">\n  <a href="#">Home</a>\n  <a href="#">About</a>\n</nav>'}
+                  placeholder={'<div class="kartu">Profil Siswa</div>'}
                   className="w-full min-h-[80px] border border-line bg-white px-3 py-2.5 text-[12.5px] font-mono resize-y mb-4 text-text-primary"
                 />
               </>
             )}
+
+            <label className="block text-[13px] font-semibold mb-1.5">
+              {`Kode awal ${regime === "silent" ? "CSS" : "JavaScript"}`}{" "}
+              <span className="font-normal text-text-dim">
+                — isi editor siswa saat pertama dibuka
+              </span>
+            </label>
+            <textarea
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value)}
+              placeholder={regime === "silent" ? ".kartu {\n  /* lengkapi di sini */\n}" : "// tulis kode JavaScript di sini"}
+              className="w-full min-h-[80px] border border-line bg-white px-3 py-2.5 text-[12.5px] font-mono resize-y mb-4 text-text-primary"
+            />
 
             {/* Konfigurasi */}
             <div className="grid grid-cols-2 gap-3 mb-4">
@@ -713,10 +723,10 @@ export default function BuatSoalPage() {
 
               <div>
                 <label className="block text-[13px] font-semibold mb-1.5">
-                  Mode feedback
+                  Jenis materi
                 </label>
                 <div className="flex gap-1.5">
-                  {(["verbose", "silent"] as const).map((r) => (
+                  {(["silent", "verbose"] as const).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -728,10 +738,15 @@ export default function BuatSoalPage() {
                           : "bg-white border-line hover:border-ink"
                       )}
                     >
-                      {r === "verbose" ? "Detail" : "Ringkas"}
+                      {r === "silent" ? "HTML/CSS" : "JS/Node"}
                     </button>
                   ))}
                 </div>
+                <p className="text-[11px] text-text-dim mt-1.5">
+                  {regime === "silent"
+                    ? "Hasil terlihat di panel preview"
+                    : "Ada pesan error, tanpa preview"}
+                </p>
               </div>
 
               <div>
