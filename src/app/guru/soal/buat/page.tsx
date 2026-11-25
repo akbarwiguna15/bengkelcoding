@@ -798,9 +798,12 @@ export default function BuatSoalPage() {
                   <span>Label</span>
                   <span>Properti CSS</span>
                   <span>Nilai yang diharapkan</span>
-                  <span className="w-[52px] text-center">Sembunyi</span>
+                  <span className="w-[52px] text-center" title="Centang hanya untuk soal ujian — pada latihan, kriteria yang terlihat membantu siswa memperbaiki jawabannya">Sembunyi</span>
                   <span className="w-7" />
                 </div>
+                <p className="text-[10.5px] text-text-dim mb-2 -mt-0.5 px-0.5">
+                  Centang <strong>Sembunyi</strong> hanya untuk soal ujian — pada latihan, kriteria yang terlihat membantu siswa memperbaiki jawabannya.
+                </p>
 
                 {manualTestCases.map((tc, i) => (
                   <div
