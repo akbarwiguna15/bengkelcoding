@@ -346,23 +346,34 @@ export function ProblemSolvingEditor({
       let result: { testResults: { passed: boolean; label: string }[]; score: number; testsPassed: number; testsTotal: number };
 
       if (language === "css" || language === "html") {
+        console.log("[DEBUG-EVAL] Fetching test cases from /api/soal/" + soalId);
         const tcRes = await fetch(`/api/soal/${soalId}`);
-        if (!tcRes.ok) throw new Error("Gagal memuat test case");
+        console.log("[DEBUG-EVAL] /api/soal response status:", tcRes.status);
+        if (!tcRes.ok) {
+          const errBody = await tcRes.text();
+          console.error("[DEBUG-EVAL] /api/soal error body:", errBody);
+          throw new Error("Gagal memuat test case");
+        }
         const soalData = await tcRes.json();
+        console.log("[DEBUG-EVAL] testCases count from /api/soal:", (soalData.testCases ?? []).length);
+        console.log("[DEBUG-EVAL] testCases data:", JSON.stringify(soalData.testCases?.map((tc: { id: string; input: string; expected: string }) => ({ id: tc.id, input: tc.input, expected: tc.expected }))));
         const testCases: { id: string; label: string; input: string; expected: string }[] =
           (soalData.testCases ?? []).map((tc: { id: string; label?: string; input: string; expected: string }) => ({
             id: tc.id, label: tc.label ?? "", input: tc.input, expected: tc.expected,
           }));
 
         const cssResults = await evaluateCssInIframe(starterHtml, code, testCases);
+        console.log("[DEBUG-EVAL] cssResults count:", cssResults.length, "passed:", cssResults.filter(r => r.passed).length);
 
         const runRes = await fetch(`/api/submissions/${submission.id}/run`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code, cssResults }),
         });
+        console.log("[DEBUG-EVAL] /run response status:", runRes.status);
         if (!runRes.ok) throw new Error("Gagal menyimpan hasil");
         result = await runRes.json();
+        console.log("[DEBUG-EVAL] Server result:", JSON.stringify({ testsPassed: result.testsPassed, testsTotal: result.testsTotal, score: result.score }));
       } else {
         const runRes = await fetch(`/api/submissions/${submission.id}/run`, {
           method: "POST",
@@ -384,7 +395,8 @@ export function ProblemSolvingEditor({
       setSubmitResult({ passed, total, score: result.score ?? 0, failedCriteria, details });
       record("submit_result", { passed, total, failedCriteria });
       onSubmitDone?.();
-    } catch {
+    } catch (err) {
+      console.error("[DEBUG-EVAL] Submit caught error:", err);
       setSubmitResult({ passed: 0, total: 0, score: 0, failedCriteria: ["Gagal mengirim"], details: [] });
     } finally {
       setSubmitting(false);
