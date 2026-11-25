@@ -61,12 +61,18 @@ function evaluateCssInIframe(
         const results: CssTestResult[] = [];
         for (const tc of testCases) {
           const match = tc.input.match(/^([^{]+)\{\s*([^}\s]+)\s*\}$/);
-          if (!match) {
+          let selector: string;
+          let property: string;
+          if (match) {
+            selector = match[1].trim();
+            property = match[2].trim();
+          } else if (/^[a-z-]+$/i.test(tc.input.trim())) {
+            selector = "body > *:first-child";
+            property = tc.input.trim();
+          } else {
             results.push({ testCaseId: tc.id, label: tc.label, passed: false, actual: "parse error", expected: tc.expected });
             continue;
           }
-          const selector = match[1].trim();
-          const property = match[2].trim();
           const el = doc.querySelector(selector);
           if (!el) {
             results.push({ testCaseId: tc.id, label: tc.label, passed: false, actual: "element not found", expected: tc.expected });
@@ -511,23 +517,32 @@ export function ProblemSolvingEditor({
             <div
               ref={resultRef}
               className={`font-mono text-[12px] px-4 py-2.5 border-t border-[#2a3b32] ${
-                submitResult.passed === submitResult.total && submitResult.total > 0
+                submitResult.total === 0
+                  ? "bg-[#1a1a0f] text-[#c0a870]"
+                  : submitResult.passed === submitResult.total
                   ? "bg-[#0f2a1a] text-[#4aba80]"
                   : "bg-[#2a0f0f] text-[#e0967a]"
               }`}
             >
-              <div className="font-semibold mb-1">
-                Hasil: {submitResult.passed}/{submitResult.total} kriteria terpenuhi
-                {submitResult.total > 0 && ` (${submitResult.score}%)`}
-              </div>
-              {submitResult.details.length > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  {submitResult.details.map((d, i) => (
-                    <div key={i} className={`text-[11px] ${d.passed ? "text-[#4aba80]" : "text-[#e0967a]"}`}>
-                      {d.passed ? "✓" : "✗"} {d.label}
-                    </div>
-                  ))}
+              {submitResult.total === 0 ? (
+                <div className="font-semibold">
+                  Jawaban terkirim — soal ini belum memiliki kriteria penilaian otomatis.
                 </div>
+              ) : (
+                <>
+                  <div className="font-semibold mb-1">
+                    Hasil: {submitResult.passed}/{submitResult.total} kriteria terpenuhi ({submitResult.score}%)
+                  </div>
+                  {submitResult.details.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {submitResult.details.map((d, i) => (
+                        <div key={i} className={`text-[11px] ${d.passed ? "text-[#4aba80]" : "text-[#e0967a]"}`}>
+                          {d.passed ? "✓" : "✗"} {d.label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

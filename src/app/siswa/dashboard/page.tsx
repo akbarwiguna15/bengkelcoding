@@ -307,8 +307,8 @@ export default function LatihanPage() {
                     className="py-2 px-4 text-[12.5px]"
                     onClick={() => openEditor(soal.id)}
                   >
-                    Selesai{soal.score != null ? ` · ${Math.round(soal.score)}` : ""}
-                    {soal.testsTotal != null ? ` (${soal.testsPassed ?? 0}/${soal.testsTotal})` : ""}
+                    Selesai{soal.score != null && (soal.testsTotal ?? 0) > 0 ? ` · ${Math.round(soal.score)}` : ""}
+                    {(soal.testsTotal ?? 0) > 0 ? ` (${soal.testsPassed ?? 0}/${soal.testsTotal})` : ""}
                     {" "}— Lihat
                   </Button>
                 )}

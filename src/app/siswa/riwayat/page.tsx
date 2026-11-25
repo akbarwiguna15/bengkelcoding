@@ -154,13 +154,19 @@ function ProblemSolvingResults({ items }: { items: SubmissionRecord[] }) {
             </p>
             <div className="flex items-center gap-5 my-5">
               <div className="font-mono text-[38px] font-semibold text-pcb">
-                {score != null ? Math.round(score) : "—"}
+                {score != null && total > 0 ? Math.round(score) : "—"}
                 <span className="text-[16px] text-text-dim">/100</span>
               </div>
               <div className="text-[13px] text-text-dim max-w-[360px]">
-                {passed} dari {total} kriteria terpenuhi.
-                {passed < total &&
-                  " Perbaiki bagian yang gagal lalu kirim ulang jika ingin memperbaiki nilai."}
+                {total > 0 ? (
+                  <>
+                    {passed} dari {total} kriteria terpenuhi.
+                    {passed < total &&
+                      " Perbaiki bagian yang gagal lalu kirim ulang jika ingin memperbaiki nilai."}
+                  </>
+                ) : (
+                  "Soal ini belum memiliki kriteria penilaian otomatis."
+                )}
               </div>
             </div>
             <div className="flex flex-col">

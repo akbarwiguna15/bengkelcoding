@@ -330,10 +330,13 @@ export default function BuatSoalPage() {
     setLoading(true);
     setSubmitError(null);
 
+    const firstTag = manualHtml.trim().match(/<([a-z][a-z0-9]*)\b[^>]*class\s*=\s*["']([^"']+)["']/i);
+    const defaultSelector = firstTag ? `.${firstTag[2].split(/\s+/)[0]}` : "body > *:first-child";
+
     const validTestCases = manualTestCases
       .filter((tc) => tc.property.trim() && tc.expected.trim())
       .map((tc, i) => ({
-        input: tc.property.trim(),
+        input: `${defaultSelector} { ${tc.property.trim()} }`,
         expected: tc.expected.trim(),
         label: tc.label.trim() || `Test ${i + 1}`,
         isHidden: tc.isHidden,
