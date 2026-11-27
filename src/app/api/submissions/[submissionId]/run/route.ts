@@ -30,9 +30,11 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (error) {
+    console.error("[DEBUG-RUN] POST /api/submissions/run error:", error);
     if (error instanceof Error && error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
-    return NextResponse.json({ error: "Terjadi kesalahan" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: "Terjadi kesalahan", debug: msg }, { status: 500 });
   }
 }

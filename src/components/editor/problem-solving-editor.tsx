@@ -397,7 +397,7 @@ export function ProblemSolvingEditor({
       onSubmitDone?.();
     } catch (err) {
       console.error("[DEBUG-EVAL] Submit caught error:", err);
-      setSubmitResult({ passed: 0, total: 0, score: 0, failedCriteria: ["Gagal mengirim"], details: [] });
+      setSubmitResult({ passed: -1, total: -1, score: 0, failedCriteria: [err instanceof Error ? err.message : "Gagal mengirim jawaban"], details: [] });
     } finally {
       setSubmitting(false);
     }
@@ -529,14 +529,20 @@ export function ProblemSolvingEditor({
             <div
               ref={resultRef}
               className={`font-mono text-[12px] px-4 py-2.5 border-t border-[#2a3b32] ${
-                submitResult.total === 0
+                submitResult.total < 0
+                  ? "bg-[#2a0f0f] text-[#e0967a]"
+                  : submitResult.total === 0
                   ? "bg-[#1a1a0f] text-[#c0a870]"
                   : submitResult.passed === submitResult.total
                   ? "bg-[#0f2a1a] text-[#4aba80]"
                   : "bg-[#2a0f0f] text-[#e0967a]"
               }`}
             >
-              {submitResult.total === 0 ? (
+              {submitResult.total < 0 ? (
+                <div className="font-semibold">
+                  Gagal mengirim jawaban: {submitResult.failedCriteria[0] ?? "Terjadi kesalahan"}
+                </div>
+              ) : submitResult.total === 0 ? (
                 <div className="font-semibold">
                   Jawaban terkirim — soal ini belum memiliki kriteria penilaian otomatis.
                 </div>
